@@ -21,7 +21,7 @@
 /** 最多允许注册的接收回调数量。 */
 #define MAX_CAN_CALLBACKS  (16)
 
-/** 周期发送槽总数；每个不同的 (FDCAN, CAN ID) 占用一个槽。 */
+/** 周期发送槽总数；每个不同的 (FDCAN, 帧类型, CAN ID) 占用一个槽。 */
 #define CAN_TX_SLOT_COUNT  (32)
 
 /** 插入发送队列能够缓存的消息数量。 */
@@ -35,16 +35,17 @@
  */
 typedef struct
 {
-    uint32_t ID;                 /*!< 要监听的标准帧 ID。 */
+    uint32_t ID;                 /*!< 要监听的 CAN ID。 */
     FDCAN_HandleTypeDef *hfdcan; /*!< 要监听的 FDCAN 总线。 */
     CAN_RxCallback_t func;       /*!< 收到匹配报文时调用的函数。 */
     uint8_t is_used;             /*!< 该注册项是否已经启用。 */
+    Enum_CAN_Id_Type id_type;    /*!< 要监听的 CAN ID 类型。 */
     void *context;               /*!< 原样传回回调的设备实例或用户数据。 */
 } CAN_CallbackEntry_t;
 
 /**
  * @brief 一个周期发送槽。
- * @note 一个槽只属于一个固定的 (FDCAN, CAN ID)。
+ * @note 一个槽只属于一个固定的 (FDCAN, 帧类型, CAN ID)。
  */
 typedef struct
 {
@@ -65,12 +66,14 @@ static Struct_CAN_Tx_Slot Can_TxSlots[CAN_TX_SLOT_COUNT];
 static uint16_t Can_TxRoundRobin;
 
 static osMessageQueueId_t Can_TxQueue;
+static osMutexId_t Can_TxSubmitMutex;
 static Struct_CAN_Tx_Msg Can_TxPendingMessage;
 static uint8_t Can_TxPending;
 
 /* Private function declarations ---------------------------------------------*/
 
 static bool BSP_CAN_HandleIsValid(FDCAN_HandleTypeDef *hfdcan);
+static bool BSP_CAN_IdIsValid(uint32_t id, Enum_CAN_Id_Type id_type);
 static bool BSP_CAN_MessageIsValid(const Struct_CAN_Tx_Msg *message);
 static uint32_t BSP_CAN_EnterCritical(void);
 static void BSP_CAN_ExitCritical(uint32_t primask);
@@ -92,6 +95,27 @@ static bool BSP_CAN_HandleIsValid(FDCAN_HandleTypeDef *hfdcan)
 }
 
 /**
+ * @brief 检查 CAN ID 与帧类型组合是否合法。
+ * @param id 待检查的 CAN ID。
+ * @param id_type 标准帧或扩展帧。
+ * @return true 参数合法；false 帧类型未知或 ID 越界。
+ */
+static bool BSP_CAN_IdIsValid(uint32_t id, Enum_CAN_Id_Type id_type)
+{
+    if (id_type == CAN_ID_STANDARD)
+    {
+        return id <= 0x7FFU;
+    }
+
+    if (id_type == CAN_ID_EXTENDED)
+    {
+        return id <= 0x1FFFFFFFU;
+    }
+
+    return false;
+}
+
+/**
  * @brief 检查发送消息是否满足当前 Classic CAN 发送接口的要求。
  * @param message 待检查的发送消息。
  * @return true 消息有效；false 消息为空、总线无效、ID 越界或长度无效。
@@ -100,7 +124,7 @@ static bool BSP_CAN_MessageIsValid(const Struct_CAN_Tx_Msg *message)
 {
     return message != NULL &&
            BSP_CAN_HandleIsValid(message->hfdcan) &&
-           message->id <= 0x7FF &&
+           BSP_CAN_IdIsValid(message->id, message->id_type) &&
            message->len > 0 &&
            message->len <= FDCAN_MAX_PAYLOAD;
 }
@@ -135,21 +159,30 @@ static void BSP_CAN_ExitCritical(uint32_t primask)
 /**
  * @brief 配置并启动一条 FDCAN 总线的接收功能。
  * @param hfdcan 要配置的 FDCAN 总线句柄。
- * @details 标准帧全部进入 RX FIFO0，扩展帧和未匹配帧被拒绝，
- *          随后启用 FIFO0 新消息中断并启动外设。
+ * @details 标准帧和扩展帧分别使用全接收掩码过滤器进入 RX FIFO0，
+ *          其他未匹配帧被拒绝，随后启用 FIFO0 新消息中断并启动外设。
  */
 static void BSP_CAN_ConfigBus(FDCAN_HandleTypeDef *hfdcan)
 {
-    FDCAN_FilterTypeDef filter = {0};
+    FDCAN_FilterTypeDef standard_filter = {0};
+    FDCAN_FilterTypeDef extended_filter = {0};
 
-    filter.IdType = FDCAN_STANDARD_ID;
-    filter.FilterIndex = 0;
-    filter.FilterType = FDCAN_FILTER_MASK;
-    filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-    filter.FilterID1 = 0x000;
-    filter.FilterID2 = 0x000;
+    standard_filter.IdType = FDCAN_STANDARD_ID;
+    standard_filter.FilterIndex = 0;
+    standard_filter.FilterType = FDCAN_FILTER_MASK;
+    standard_filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+    standard_filter.FilterID1 = 0x000;
+    standard_filter.FilterID2 = 0x000;
 
-    if (HAL_FDCAN_ConfigFilter(hfdcan, &filter) != HAL_OK ||
+    extended_filter.IdType = FDCAN_EXTENDED_ID;
+    extended_filter.FilterIndex = 0;
+    extended_filter.FilterType = FDCAN_FILTER_MASK;
+    extended_filter.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
+    extended_filter.FilterID1 = 0x00000000;
+    extended_filter.FilterID2 = 0x00000000;
+
+    if (HAL_FDCAN_ConfigFilter(hfdcan, &standard_filter) != HAL_OK ||
+        HAL_FDCAN_ConfigFilter(hfdcan, &extended_filter) != HAL_OK ||
         HAL_FDCAN_ConfigGlobalFilter(hfdcan,
                                      FDCAN_REJECT,
                                      FDCAN_REJECT,
@@ -184,7 +217,12 @@ void BSP_CAN_ConfigInit(void)
                                         NULL);
     }
 
-    if (Can_TxQueue == NULL)
+    if (Can_TxSubmitMutex == NULL)
+    {
+        Can_TxSubmitMutex = osMutexNew(NULL);
+    }
+
+    if (Can_TxQueue == NULL || Can_TxSubmitMutex == NULL)
     {
         Error_Handler();
     }
@@ -208,9 +246,29 @@ bool BSP_CAN_RegisterCallback(uint32_t can_id,
                               CAN_RxCallback_t callback,
                               void *context)
 {
+    return BSP_CAN_RegisterCallbackEx(can_id,
+                                      CAN_ID_STANDARD,
+                                      hfdcan,
+                                      callback,
+                                      context);
+}
+
+bool BSP_CAN_RegisterCallbackEx(uint32_t can_id,
+                                Enum_CAN_Id_Type id_type,
+                                FDCAN_HandleTypeDef *hfdcan,
+                                CAN_RxCallback_t callback,
+                                void *context)
+{
     uint32_t primask;
     uint16_t index;
     int16_t free_index = -1;
+
+    if (!BSP_CAN_HandleIsValid(hfdcan) ||
+        !BSP_CAN_IdIsValid(can_id, id_type) ||
+        callback == NULL)
+    {
+        return false;
+    }
 
     primask = BSP_CAN_EnterCritical();
     for (index = 0; index < MAX_CAN_CALLBACKS; index++)
@@ -218,6 +276,7 @@ bool BSP_CAN_RegisterCallback(uint32_t can_id,
         if (Can_RxCallbacks[index].is_used != 0)
         {
             if (Can_RxCallbacks[index].hfdcan == hfdcan &&
+                Can_RxCallbacks[index].id_type == id_type &&
                 Can_RxCallbacks[index].ID == can_id)
             {
                 BSP_CAN_ExitCritical(primask);
@@ -241,6 +300,7 @@ bool BSP_CAN_RegisterCallback(uint32_t can_id,
     Can_RxCallbacks[index].hfdcan = hfdcan;
     Can_RxCallbacks[index].func = callback;
     Can_RxCallbacks[index].context = context;
+    Can_RxCallbacks[index].id_type = id_type;
 
     /* 最后启用表项，保证接收中断只会读取已经填写完整的内容。 */
     Can_RxCallbacks[index].is_used = 1;
@@ -282,6 +342,10 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
         {
             if (Can_RxCallbacks[index].is_used != 0 &&
                 Can_RxCallbacks[index].hfdcan == hfdcan &&
+                ((Can_RxCallbacks[index].id_type == CAN_ID_STANDARD &&
+                  rx_header.IdType == FDCAN_STANDARD_ID) ||
+                 (Can_RxCallbacks[index].id_type == CAN_ID_EXTENDED &&
+                  rx_header.IdType == FDCAN_EXTENDED_ID)) &&
                 Can_RxCallbacks[index].ID == rx_header.Identifier)
             {
                 Can_RxCallbacks[index].func(hfdcan,
@@ -303,12 +367,51 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
  */
 bool CAN_Tx_Submit(const Struct_CAN_Tx_Msg *tx_msg)
 {
-    if (!BSP_CAN_MessageIsValid(tx_msg) || Can_TxQueue == NULL)
+    return CAN_Tx_SubmitBatch(tx_msg, 1U);
+}
+
+bool CAN_Tx_SubmitBatch(const Struct_CAN_Tx_Msg *tx_msgs, size_t count)
+{
+    size_t index;
+    bool result = true;
+
+    if (tx_msgs == NULL || count == 0U || count > CAN_TX_QUEUE_DEPTH ||
+        Can_TxQueue == NULL || Can_TxSubmitMutex == NULL)
     {
         return false;
     }
 
-    return osMessageQueuePut(Can_TxQueue, tx_msg, 0, 0) == osOK;
+    for (index = 0; index < count; index++)
+    {
+        if (!BSP_CAN_MessageIsValid(&tx_msgs[index]))
+        {
+            return false;
+        }
+    }
+
+    if (osMutexAcquire(Can_TxSubmitMutex, osWaitForever) != osOK)
+    {
+        return false;
+    }
+
+    if (osMessageQueueGetSpace(Can_TxQueue) < count)
+    {
+        result = false;
+    }
+    else
+    {
+        for (index = 0; index < count; index++)
+        {
+            if (osMessageQueuePut(Can_TxQueue, &tx_msgs[index], 0, 0) != osOK)
+            {
+                result = false;
+                break;
+            }
+        }
+    }
+
+    osMutexRelease(Can_TxSubmitMutex);
+    return result;
 }
 
 /**
@@ -340,6 +443,7 @@ bool CAN_Tx_Perform(const Struct_CAN_Tx_Msg *tx_msg)
         if (Can_TxSlots[index].is_used != 0)
         {
             if (Can_TxSlots[index].message.hfdcan == tx_msg->hfdcan &&
+                Can_TxSlots[index].message.id_type == tx_msg->id_type &&
                 Can_TxSlots[index].message.id == tx_msg->id)
             {
                 slot_index = (int16_t)index;
@@ -370,6 +474,7 @@ bool CAN_Tx_Perform(const Struct_CAN_Tx_Msg *tx_msg)
         memset(slot, 0, sizeof(*slot));
         slot->message.hfdcan = tx_msg->hfdcan;
         slot->message.id = tx_msg->id;
+        slot->message.id_type = tx_msg->id_type;
     }
 
     /* 在临界区内复制整帧，发送任务不会读到一半新、一半旧的数据。 */
@@ -406,7 +511,9 @@ static bool BSP_CAN_SendMsg(const Struct_CAN_Tx_Msg *message)
     }
 
     tx_header.Identifier = message->id;
-    tx_header.IdType = FDCAN_STANDARD_ID;
+    tx_header.IdType = message->id_type == CAN_ID_EXTENDED
+                           ? FDCAN_EXTENDED_ID
+                           : FDCAN_STANDARD_ID;
     tx_header.TxFrameType = FDCAN_DATA_FRAME;
     tx_header.DataLength = message->len;
     tx_header.ErrorStateIndicator = FDCAN_ESI_ACTIVE;

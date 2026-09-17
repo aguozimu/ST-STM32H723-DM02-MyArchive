@@ -308,4 +308,3 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
   for (;;) {}
 }
 /* USER CODE END Application */
-
