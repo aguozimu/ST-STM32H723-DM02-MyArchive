@@ -1,0 +1,48 @@
+# CMake 构建输出
+build/
+cmake-build-*/
+out/
+
+# C/C++ 编译中间产物
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+*.su
+*.a
+*.so
+
+# CMSIS-DSP 预编译库是工程的必要链接依赖
+!Middlewares/ST/ARM/DSP/Lib/
+!Middlewares/ST/ARM/DSP/Lib/libarm_cortexM7lfsp_math.a
+
+# STM32CubeMX 相关
+mx.scratch
+*.bak
+!.settings
+
+# IDE 与编辑器配置
+.idea/
+.vscode/
+*.swp
+*~
+*.log
+!sysid/**/*.log
+
+# 调试器配置与日志
+*.jlink
+*.launch
+JLinkLog.txt
+*.jdebug.user
+Debug.jdebug.user
+
+# Override the global STM32CubeIDE Debug/ rule for source files.
+!User_File/System/debug/
+!User_File/System/debug/**
+
+# 操作系统级缓存
+.DS_Store
+Thumbs.db

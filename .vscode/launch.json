@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "STM32H723: ST-Link OpenOCD Debug",
+            "type": "cortex-debug",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/H7_BSP-main",
+            "executable": "${workspaceFolder}/H7_BSP-main/build/Debug/H7_BSP.elf",
+            "servertype": "openocd",
+            "serverpath": "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/bin/openocd.exe",
+            "armToolchainPath": "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin",
+            "gdbPath": "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+            "searchDir": [
+                "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/openocd/scripts"
+            ],
+            "configFiles": [
+                "${workspaceFolder}/H7_BSP-main/User_Config/stlink.cfg"
+            ],
+            "svdFile": "E:/CubeCLT/STM32CubeCLT_1.22.0/STMicroelectronics_CMSIS_SVD/STM32H723.svd",
+            "runToEntryPoint": "main",
+            "preLaunchTask": "CMake: Build Debug",
+            "showDevDebugOutput": "none"
+        }
+    ]
+}
