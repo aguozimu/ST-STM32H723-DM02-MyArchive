@@ -48,7 +48,6 @@
             "options": {
                 "cwd": "${workspaceFolder}/H7_BSP-main"
             },
-            "dependsOn": "CMake: Build Debug",
             "problemMatcher": []
         },
         {

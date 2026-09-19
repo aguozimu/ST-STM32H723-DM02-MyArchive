@@ -1,58 +1,86 @@
+/**
+ * @file Control_Task.cpp
+ * @brief 四台 ZDT 电机以 50 RPM 驱动底盘向前运行 1 秒。
+ */
+
 #include "user_task.h"
-#include "zdtmotor.h"
+#include "Chassis.h"
+
+#include <cstdint>
 
 namespace
 {
 
-Class_ZDTMotor ZDT_Motor;
+Class_Chassis Chassis;
 
-constexpr uint8_t ZDT_MOTOR_ADDRESS = 1U;
-constexpr uint32_t ZDT_MOTOR_PULSES_PER_REVOLUTION = 3200U;
-constexpr uint16_t ZDT_SPEED_ACCELERATION = 10U;
-constexpr uint16_t ZDT_SPEED_MAX_RPM = 300U;
-constexpr uint32_t ZDT_CONTROL_PERIOD_TICKS = 1000U;
+constexpr float FORWARD_SPEED_RPM = 50.0f;
+constexpr uint32_t CONTROL_PERIOD_TICKS = 10U;
+constexpr uint32_t FORWARD_DURATION_TICKS = 1000U;
+constexpr uint16_t ZDT_ACCELERATION = 10U;
+constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
+constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 2000U;
+constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 200U;
+
+void InitChassis()
+{
+    Struct_Chassis_Config chassis_config{};
+
+    Struct_Chassis_Motor_Config motor_config[CHASSIS_WHEEL_COUNT]{};
+    const int8_t motor_polarity[CHASSIS_WHEEL_COUNT] = {
+        1,  // 1 号电机：左前轮，正向
+        -1, // 2 号电机：右前轮，反向
+        1,  // 3 号电机：左后轮，正向
+        -1, // 4 号电机：右后轮，反向
+    };
+
+    for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
+    {
+        motor_config[i].hfdcan = &hfdcan2;
+        motor_config[i].can_id = static_cast<uint8_t>(i + 1U);
+        motor_config[i].polarity = motor_polarity[i];
+        motor_config[i].speed_to_motor = 1.0f;
+        motor_config[i].firmware = Enum_ZDTMotor_Firmware::EMM;
+        motor_config[i].checksum = Enum_ZDTMotor_Checksum::FIXED_6B;
+        motor_config[i].pulses_per_revolution = ZDT_PULSES_PER_REVOLUTION;
+        motor_config[i].acceleration = ZDT_ACCELERATION;
+    }
+
+    Chassis.Init(chassis_config, motor_config);
+}
+
+[[noreturn]] void HoldTask()
+{
+    for (;;)
+    {
+        osDelay(1000U);
+    }
+}
 
 } // namespace
 
 extern "C" void Control_Task(void *argument)
 {
     (void)argument;
-
     osThreadSetPriority(osThreadGetId(), osPriorityHigh1);
 
-    if (!ZDT_Motor.Init(&hfdcan2,
-                        ZDT_MOTOR_ADDRESS,
-                        Enum_ZDTMotor_Firmware::EMM,
-                        Enum_ZDTMotor_Checksum::FIXED_6B,
-                        false,
-                        ZDT_MOTOR_PULSES_PER_REVOLUTION))
+    osDelay(ZDT_BOOT_DELAY_TICKS);
+    InitChassis();
+    Chassis.Enable();
+
+    osDelay(ZDT_ENABLE_SETTLE_TICKS);
+    Chassis.SetVelocity(50, FORWARD_SPEED_RPM, 0.0f);
+
+    const uint32_t start_tick = osKernelGetTickCount();
+    uint32_t next_wake_tick = start_tick;
+    while ((osKernelGetTickCount() - start_tick) < FORWARD_DURATION_TICKS)
     {
-        for (;;)
-        {
-            osDelay(ZDT_CONTROL_PERIOD_TICKS);
-        }
-    }
+        Chassis.Process();
 
-    ZDT_Motor.Enable();
-    ZDT_Motor.SetSpeed(0.0f, ZDT_SPEED_ACCELERATION);
-
-    uint16_t target_speed_rpm = 0U;
-    uint32_t next_wake_tick =
-        osKernelGetTickCount() + ZDT_CONTROL_PERIOD_TICKS;
-
-    for (;;)
-    {
-        ZDT_Motor.Process();
-
-        target_speed_rpm =
-            target_speed_rpm >= ZDT_SPEED_MAX_RPM
-                ? 0U
-                : static_cast<uint16_t>(target_speed_rpm + 1U);
-
-        ZDT_Motor.SetSpeed(static_cast<float>(target_speed_rpm),
-                           ZDT_SPEED_ACCELERATION);
-
-        next_wake_tick += ZDT_CONTROL_PERIOD_TICKS;
+        next_wake_tick += CONTROL_PERIOD_TICKS;
         osDelayUntil(next_wake_tick);
     }
+
+    Chassis.Stop();
+    // Chassis.Disable();
+    HoldTask();
 }
