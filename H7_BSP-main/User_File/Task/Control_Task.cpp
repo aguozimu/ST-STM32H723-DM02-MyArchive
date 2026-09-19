@@ -14,8 +14,7 @@ namespace
 Class_Chassis Chassis;
 
 constexpr float FORWARD_SPEED_RPM = 50.0f;
-constexpr uint32_t CONTROL_PERIOD_TICKS = 10U;
-constexpr uint32_t FORWARD_DURATION_TICKS = 1000U;
+constexpr float FORWARD_DURATION_S = 1.0f;
 constexpr uint16_t ZDT_ACCELERATION = 10U;
 constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
 constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 2000U;
@@ -68,19 +67,9 @@ extern "C" void Control_Task(void *argument)
     Chassis.Enable();
 
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
-    Chassis.SetVelocity(50, FORWARD_SPEED_RPM, 0.0f);
-
-    const uint32_t start_tick = osKernelGetTickCount();
-    uint32_t next_wake_tick = start_tick;
-    while ((osKernelGetTickCount() - start_tick) < FORWARD_DURATION_TICKS)
-    {
-        Chassis.Process();
-
-        next_wake_tick += CONTROL_PERIOD_TICKS;
-        osDelayUntil(next_wake_tick);
-    }
-
-    Chassis.Stop();
-    // Chassis.Disable();
+    Chassis.RunForSeconds(30.0f,
+                          FORWARD_SPEED_RPM,
+                          0.0f,
+                          3.0f);
     HoldTask();
 }

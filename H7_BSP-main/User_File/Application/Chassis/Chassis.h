@@ -85,6 +85,17 @@ public:
      */
     void SetVelocity(float x, float y, float omega);
 
+    /**
+     * @brief 按指定速度运行一段时间，然后同步停止四台电机。
+     * @param x 向右为正的横向速度。
+     * @param y 向前为正的纵向速度。
+     * @param omega 逆时针为正的底盘角速度。
+     * @param duration_s 运行时长，单位 s，使用 float 表示。
+     *
+     * 本接口使用 FreeRTOS 的 osDelay() 阻塞当前任务。
+     */
+    void RunForSeconds(float x, float y, float omega, float duration_s);
+
     /** 周期调用四台 ZDT 电机的 Process()，维护底层应答和在线状态。 */
     void Process();
 

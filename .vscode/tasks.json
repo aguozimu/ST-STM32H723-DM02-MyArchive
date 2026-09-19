@@ -34,14 +34,14 @@
             }
         },
         {
-            "label": "ST-Link: Flash Debug",
+            "label": "DAPLink: Flash Debug",
             "type": "process",
             "command": "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/bin/openocd.exe",
             "args": [
                 "-s",
                 "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/openocd/scripts",
                 "-f",
-                "User_Config/stlink.cfg",
+                "User_Config/daplink.cfg",
                 "-c",
                 "program build/Debug/H7_BSP.elf verify reset exit"
             ],
@@ -51,14 +51,14 @@
             "problemMatcher": []
         },
         {
-            "label": "ST-Link: Reset Target",
+            "label": "DAPLink: Reset Target",
             "type": "process",
             "command": "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/bin/openocd.exe",
             "args": [
                 "-s",
                 "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/openocd/scripts",
                 "-f",
-                "User_Config/stlink.cfg",
+                "User_Config/daplink.cfg",
                 "-c",
                 "init; reset run; shutdown"
             ],

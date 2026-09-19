@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "STM32H723: ST-Link OpenOCD Debug",
+            "name": "STM32H723: DAPLink OpenOCD Debug",
             "type": "cortex-debug",
             "request": "launch",
             "cwd": "${workspaceFolder}/H7_BSP-main",
@@ -15,7 +15,7 @@
                 "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/openocd/scripts"
             ],
             "configFiles": [
-                "${workspaceFolder}/H7_BSP-main/User_Config/stlink.cfg"
+                "${workspaceFolder}/H7_BSP-main/User_Config/daplink.cfg"
             ],
             "svdFile": "E:/CubeCLT/STM32CubeCLT_1.22.0/STMicroelectronics_CMSIS_SVD/STM32H723.svd",
             "runToEntryPoint": "main",

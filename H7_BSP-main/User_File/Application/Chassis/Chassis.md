@@ -78,6 +78,9 @@ chassis.Enable();
 chassis.SetVelocity(0.0f, 50.0f, 0.0f);
 chassis.Process();
 
+// 按指定速度运行 1.0 秒，然后同步停止。
+chassis.RunForSeconds(0.0f, 50.0f, 0.0f, 1.0f);
+
 chassis.Stop();
 chassis.Disable();
 ```
@@ -89,6 +92,7 @@ chassis.Disable();
 | `Init()` | 保存配置并调用四次 `Class_ZDTMotor::Init()` |
 | `Enable()` | 缓存四台电机的使能命令，然后广播同步触发 |
 | `SetVelocity()` | 计算四轮速度，调用 `SetSpeed()`，然后广播同步触发 |
+| `RunForSeconds()` | 发送速度，使用 `osDelay()` 按 float 秒数延迟，结束后同步停止 |
 | `Process()` | 调用四台 ZDT 电机的 `Process()`，维护应答超时和在线状态 |
 | `Stop()` | 缓存四台电机的停止命令，然后广播同步触发 |
 | `Disable()` | 缓存四台电机的失能命令，然后广播同步触发 |
@@ -101,9 +105,8 @@ chassis.Disable();
 - 初始化并同步使能四台电机；
 - 1、3 号电机使用正极性，2、4 号电机使用反极性；
 - 等待 200 ms；
-- 调用一次 `SetVelocity(0, 50, 0)`，以 50 RPM 向前运行；
-- 以 10 ms 周期调用 `Process()`，1 s 后结束运行；
-- 同步停止并失能四台电机；
+- 调用 `RunForSeconds(0, 50, 0, 1.0f)`，以 50 RPM 向前运行 1 s；
+- `RunForSeconds()` 延迟结束后同步停止四台电机；
 - 任务进入永久等待。
 
 ZDT 固件、校验、反馈和命令格式见 [`../../Device/Peripheral/Motor/ZDTmotor/zdtmotor.md`](../../Device/Peripheral/Motor/ZDTmotor/zdtmotor.md)。

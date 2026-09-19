@@ -6,6 +6,7 @@
  */
 
 #include "Chassis.h"
+#include "cmsis_os2.h"
 
 void Class_Chassis::Init(
     const Struct_Chassis_Config &new_config,
@@ -62,6 +63,21 @@ void Class_Chassis::SetVelocity(float x, float y, float omega)
     }
     // 四条缓存命令在收到广播帧后同时开始执行。
     motors[Chassis_Wheel_LeftFront].TriggerSynchronousMotion();
+}
+
+void Class_Chassis::RunForSeconds(float x,
+                                  float y,
+                                  float omega,
+                                  float duration_s)
+{
+    // 先发送四轮速度，再将 float 秒数换算为 FreeRTOS 内核 tick。
+    SetVelocity(x, y, omega);
+    const uint32_t duration_ticks =
+        static_cast<uint32_t>(duration_s * static_cast<float>(osKernelGetTickFreq()));
+    osDelay(duration_ticks);
+
+    // 延迟结束后同步停止四台电机。
+    Stop();
 }
 
 void Class_Chassis::Process()
