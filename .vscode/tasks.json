@@ -2,9 +2,9 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "CMake: Configure Debug",
+            "label": "CMake: configure Debug",
             "type": "process",
-            "command": "E:/CubeCLT/STM32CubeCLT_1.22.0/CMake/bin/cmake.exe",
+            "command": "cmake",
             "args": [
                 "--preset",
                 "Debug"
@@ -15,18 +15,20 @@
             "problemMatcher": []
         },
         {
-            "label": "CMake: Build Debug",
+            "label": "CMake: build Debug",
             "type": "process",
-            "command": "E:/CubeCLT/STM32CubeCLT_1.22.0/CMake/bin/cmake.exe",
+            "command": "cmake",
             "args": [
                 "--build",
                 "--preset",
-                "Debug"
+                "Debug",
+                "--parallel"
             ],
             "options": {
                 "cwd": "${workspaceFolder}/H7_BSP-main"
             },
-            "dependsOn": "CMake: Configure Debug",
+            "dependsOn": "CMake: configure Debug",
+            "dependsOrder": "sequence",
             "problemMatcher": "$gcc",
             "group": {
                 "kind": "build",
@@ -34,16 +36,12 @@
             }
         },
         {
-            "label": "DAPLink: Flash Debug",
+            "label": "CMake: configure Release",
             "type": "process",
-            "command": "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/bin/openocd.exe",
+            "command": "cmake",
             "args": [
-                "-s",
-                "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/openocd/scripts",
-                "-f",
-                "User_Config/daplink.cfg",
-                "-c",
-                "program build/Debug/H7_BSP.elf verify reset exit"
+                "--preset",
+                "Release"
             ],
             "options": {
                 "cwd": "${workspaceFolder}/H7_BSP-main"
@@ -51,19 +49,84 @@
             "problemMatcher": []
         },
         {
-            "label": "DAPLink: Reset Target",
+            "label": "CMake: build Release",
             "type": "process",
-            "command": "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/bin/openocd.exe",
+            "command": "cmake",
             "args": [
-                "-s",
-                "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/openocd/scripts",
-                "-f",
-                "User_Config/daplink.cfg",
-                "-c",
-                "init; reset run; shutdown"
+                "--build",
+                "--preset",
+                "Release",
+                "--parallel"
             ],
             "options": {
                 "cwd": "${workspaceFolder}/H7_BSP-main"
+            },
+            "dependsOn": "CMake: configure Release",
+            "dependsOrder": "sequence",
+            "problemMatcher": "$gcc",
+            "group": {
+                "kind": "build"
+            }
+        },
+        {
+            "label": "Flash STM32H723 via DAPLink",
+            "type": "process",
+            "command": "C:/Users/zyj/AppData/Roaming/xPacks/@xpack-dev-tools/openocd/0.12.0-7.1/.content/bin/openocd.exe",
+            "args": [
+                "-s",
+                "C:/Users/zyj/AppData/Roaming/xPacks/@xpack-dev-tools/openocd/0.12.0-7.1/.content/openocd/scripts",
+                "-f",
+                "interface/cmsis-dap.cfg",
+                "-f",
+                "target/stm32h7x.cfg",
+                "-c",
+                "transport select swd",
+                "-c",
+                "adapter speed 1000",
+                "-c",
+                "program build/Debug/H7_BSP.elf verify reset exit"
+            ],
+            "dependsOn": "CMake: build Debug",
+            "dependsOrder": "sequence",
+            "options": {
+                "cwd": "${workspaceFolder}/H7_BSP-main"
+            },
+            "group": {
+                "kind": "build"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash STM32H723 via ST-Link",
+            "type": "process",
+            "command": "C:/Users/zyj/AppData/Roaming/xPacks/@xpack-dev-tools/openocd/0.12.0-7.1/.content/bin/openocd.exe",
+            "args": [
+                "-s",
+                "C:/Users/zyj/AppData/Roaming/xPacks/@xpack-dev-tools/openocd/0.12.0-7.1/.content/openocd/scripts",
+                "-f",
+                "interface/stlink.cfg",
+                "-f",
+                "target/stm32h7x.cfg",
+                "-c",
+                "program build/Debug/H7_BSP.elf verify reset exit"
+            ],
+            "dependsOn": "CMake: build Debug",
+            "dependsOrder": "sequence",
+            "options": {
+                "cwd": "${workspaceFolder}/H7_BSP-main"
+            },
+            "group": {
+                "kind": "build"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
             },
             "problemMatcher": []
         }

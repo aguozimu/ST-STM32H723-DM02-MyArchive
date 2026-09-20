@@ -20,6 +20,7 @@
 #include "bsp_w25q64jv.h"
 #include "cmsis_os2.h"
 #include "sys_timestamp.h"
+#include "uart7_tx_test.h"
 #include <cstdint>
 
 extern "C" {
@@ -86,6 +87,11 @@ extern "C" void TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
     else if (htim->Instance == TIM6)
     {
         Task1s_Callback();
+    }
+    else if (htim->Instance == TIM7)
+    {
+        // UART7 10 kHz 发送测试，见 uart7_tx_test.cpp
+        UART7_Tx_Test_PeriodElapsedCallback();
     }
 }
 

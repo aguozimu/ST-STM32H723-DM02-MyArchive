@@ -1,12 +1,16 @@
 {
-    "cmake.sourceDirectory": "${workspaceFolder}/H7_BSP-main",
-    "cmake.cmakePath": "E:/CubeCLT/STM32CubeCLT_1.22.0/CMake/bin/cmake.exe",
+    "cmake.sourceDirectory": "D:/cubemx/project/1111H7_BSP-main/H7_BSP-main",
     "cmake.useCMakePresets": "always",
-    "cmake.configureOnOpen": false,
-    "cmake.configurePreset": "Debug",
-    "cmake.buildPreset": "Debug",
-    "C_Cpp.default.compilerPath": "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin/arm-none-eabi-gcc.exe",
-    "C_Cpp.default.compileCommands": "${workspaceFolder}/H7_BSP-main/build/Debug/compile_commands.json",
-    "cortex-debug.openocdPath": "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/bin/openocd.exe",
-    "cortex-debug.armToolchainPath": "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin"
+    "cmake.configureOnOpen": true,
+    "cmake.preferredGenerators": [
+        "Ninja"
+    ],
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c",
+        "*.cpp": "cpp",
+        "*.hpp": "cpp"
+    },
+    "editor.formatOnSave": true
 }

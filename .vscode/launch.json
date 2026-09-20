@@ -2,25 +2,52 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "STM32H723: DAPLink OpenOCD Debug",
+            "name": "STM32H723: DAPLink (OpenOCD)",
             "type": "cortex-debug",
             "request": "launch",
             "cwd": "${workspaceFolder}/H7_BSP-main",
             "executable": "${workspaceFolder}/H7_BSP-main/build/Debug/H7_BSP.elf",
             "servertype": "openocd",
-            "serverpath": "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/bin/openocd.exe",
-            "armToolchainPath": "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin",
-            "gdbPath": "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+            "interface": "swd",
+            "gdbPath": "C:/ST/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+            "serverpath": "C:/Users/zyj/AppData/Roaming/xPacks/@xpack-dev-tools/openocd/0.12.0-7.1/.content/bin/openocd.exe",
             "searchDir": [
-                "E:/OpenOCD/xpack-openocd-0.12.0-7-win32-x64/xpack-openocd-0.12.0-7/openocd/scripts"
+                "C:/Users/zyj/AppData/Roaming/xPacks/@xpack-dev-tools/openocd/0.12.0-7.1/.content/openocd/scripts"
             ],
             "configFiles": [
-                "${workspaceFolder}/H7_BSP-main/User_Config/daplink.cfg"
+                "interface/cmsis-dap.cfg",
+                "target/stm32h7x.cfg"
             ],
-            "svdFile": "E:/CubeCLT/STM32CubeCLT_1.22.0/STMicroelectronics_CMSIS_SVD/STM32H723.svd",
+            "openOCDLaunchCommands": [
+                "transport select swd",
+                "adapter speed 1000"
+            ],
+            "device": "STM32H723VGTx",
             "runToEntryPoint": "main",
-            "preLaunchTask": "CMake: Build Debug",
-            "showDevDebugOutput": "none"
+            "preLaunchTask": "CMake: build Debug"
+        },
+        {
+            "name": "STM32H723: DAPLink (attach)",
+            "type": "cortex-debug",
+            "request": "attach",
+            "cwd": "${workspaceFolder}/H7_BSP-main",
+            "executable": "${workspaceFolder}/H7_BSP-main/build/Debug/H7_BSP.elf",
+            "servertype": "openocd",
+            "interface": "swd",
+            "gdbPath": "C:/ST/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe",
+            "serverpath": "C:/Users/zyj/AppData/Roaming/xPacks/@xpack-dev-tools/openocd/0.12.0-7.1/.content/bin/openocd.exe",
+            "searchDir": [
+                "C:/Users/zyj/AppData/Roaming/xPacks/@xpack-dev-tools/openocd/0.12.0-7.1/.content/openocd/scripts"
+            ],
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                "target/stm32h7x.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "transport select swd",
+                "adapter speed 1000"
+            ],
+            "device": "STM32H723VGTx"
         }
     ]
 }
