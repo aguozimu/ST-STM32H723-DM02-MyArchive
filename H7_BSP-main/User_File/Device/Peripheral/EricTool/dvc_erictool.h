@@ -63,9 +63,6 @@ protected:
 
   // 内部变量
 
-  // 发送缓冲区
-  uint8_t Tx_Buffer[UART_BUFFER_SIZE];
-
   // 需要绘图的各个变量数据地址（最多 24 个通道）
   const void *Data[24];
   // 当前发送的数据数量

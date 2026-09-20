@@ -47,6 +47,9 @@ struct Struct_UART_Manage_Object
     UART_HandleTypeDef *UART_Handler;
     UART_Callback Callback_Function;
 
+    // DMA-accessible transmit buffer. The whole manage object lives in .dma_buffer.
+    uint8_t Tx_Buffer[UART_BUFFER_SIZE];
+
     // 双缓冲适配的缓冲区以及当前激活的缓冲区
     uint8_t Rx_Buffer_0[UART_BUFFER_SIZE];
     uint8_t Rx_Buffer_1[UART_BUFFER_SIZE];

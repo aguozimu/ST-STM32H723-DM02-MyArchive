@@ -63,6 +63,7 @@ extern "C" void System_Init(void)
     ADC_Init(&hadc1, 1);
     BSP_Power.Init(true, true, true);
     EricTool_USB.Init();
+    EricTool_UART.Init(&huart7);
     BSP_BMI088.BMI088_Gyro.Start_FIFO_Acquisition();
     
     init_finished = true;

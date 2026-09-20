@@ -90,9 +90,21 @@ void Class_EricTool_UART::UART_RxCpltCallback(const uint8_t *Rx_Data, const uint
  */
 void Class_EricTool_UART::TIM_1ms_Write_PeriodElapsedCallback()
 {
-  if (UART_Manage_Object == nullptr) return;
-  Output();
-  UART_Transmit_Data(UART_Manage_Object->UART_Handler, Tx_Buffer, Data_Number * sizeof(float) + sizeof(uint32_t));
+    if (UART_Manage_Object == nullptr || UART_Manage_Object->UART_Handler == nullptr)
+    {
+        return;
+    }
+
+    UART_HandleTypeDef *huart = UART_Manage_Object->UART_Handler;
+    if (huart->gState != HAL_UART_STATE_READY)
+    {
+        return;
+    }
+
+    Output();
+    UART_Transmit_Data(huart,
+                       UART_Manage_Object->Tx_Buffer,
+                       Data_Number * sizeof(float) + sizeof(uint32_t));
 }
 
 /**
@@ -186,7 +198,7 @@ void Class_EricTool_UART::_Judge_Variable_Value(const uint16_t &Length, int flag
  */
 void Class_EricTool_UART::Output()
 {
-    uint8_t *tmp_buffer = Tx_Buffer;
+    uint8_t *tmp_buffer = UART_Manage_Object->Tx_Buffer;
 
     memset(tmp_buffer, 0, UART_BUFFER_SIZE);
 
