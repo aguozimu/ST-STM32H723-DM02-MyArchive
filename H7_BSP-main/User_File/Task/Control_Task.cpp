@@ -10,9 +10,6 @@
 
 namespace
 {
-
-Class_Chassis Chassis;
-
 constexpr float FORWARD_SPEED_RPM = 50.0f;
 constexpr float FORWARD_DURATION_S = 1.0f;
 constexpr uint16_t ZDT_ACCELERATION = 10U;
@@ -44,7 +41,7 @@ void InitChassis()
         motor_config[i].acceleration = ZDT_ACCELERATION;
     }
 
-    Chassis.Init(chassis_config, motor_config);
+    APP_Chassis.Init(chassis_config, motor_config);
 }
 
 [[noreturn]] void HoldTask()
@@ -64,12 +61,12 @@ extern "C" void Control_Task(void *argument)
 
     osDelay(ZDT_BOOT_DELAY_TICKS);
     InitChassis();
-    Chassis.Enable();
+    APP_Chassis.Enable();
 
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
-    Chassis.RunForSeconds(30.0f,
-                          FORWARD_SPEED_RPM,
-                          0.0f,
-                          3.0f);
+    APP_Chassis.RunForSeconds(30.0f,
+                              FORWARD_SPEED_RPM,
+                              0.0f,
+                              3.0f);
     HoldTask();
 }
