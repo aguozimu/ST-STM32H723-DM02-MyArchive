@@ -513,6 +513,12 @@ bool Class_ZDTMotor::ReadVersion()
     return SubmitCommand(address, 0x1FU, nullptr, 0U, false);
 }
 
+/** @brief 只改应用层方向标志，供运行时标定轮子极性使用。 */
+void Class_ZDTMotor::SetReverse(bool value)
+{
+    reverse = value;
+}
+
 /** @brief 手册 5.6.4：发送 1A，读取选项参数状态位。 */
 bool Class_ZDTMotor::ReadOptionStatus()
 {

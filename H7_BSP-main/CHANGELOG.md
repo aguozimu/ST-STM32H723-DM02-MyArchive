@@ -4,6 +4,28 @@
 
 格式遵循“日期 + 分类”的方式维护。当前项目尚未形成正式版本号，因此先使用日期条目。
 
+## 2026-09-21
+
+### 新增
+
+- 新增 INS 应用层（`User_File/Application/Ins/INS.h/.cpp`、`INS.md`）：陀螺仪 + 四轮里程计的最简互补融合，输出 `x / y / yaw`。不做 EKF、打滑检测、有效性判定和故障处理；视觉绝对定位只保留 `UpdateVisionPose()` 数据入口，不参与融合。
+- `Class_Chassis` 新增 `ConfigureOdometryFeedback()`、`StopOdometryFeedback()`、`GetWheelFeedback()`、`RunToRelativePose()`、`SetWheelPolarity()`；`Class_ZDTMotor` 新增只改方向标志的 `SetReverse()`，用于台架标定轮子极性（不重新 `Init()`，避免重复注册 CAN 回调）。
+- `Struct_Chassis_Config` 新增 `wheel_radius_m`、`gear_ratio`、`max_linear_speed_m_s`、`max_angular_speed_rad_s`；`Struct_Chassis_Motor_Config` 新增 `wheel`、`roller_orientation`。`speed_to_motor` 不再手填，改由 `Init()` 按 `gear_ratio * 60 / (2 * pi * wheel_radius_m)` 算出。
+
+### 已完成
+
+- `InsTask` 由“等待线程标志”改为固定 100 Hz：每周期 `APP_Chassis.Process()` + `APP_INS.Update()`，位姿只在此处更新，控制闭环只读结果。
+- `Control_Task` 按实车参数初始化底盘与 INS（`half_length = 0.073 m`、`half_width = 0.146 m`、麦轮有效半径 `0.0375 m`、减速比 `1:1`），打开四轮 `0x36` 10 ms 周期位置反馈并同步使能，然后执行前进 1 m、右移 0.5 m、原地逆时针 90 度的相对位姿闭环验收动作。
+- 根 `CMakeLists.txt` 注册 `User_File/Application/Ins/INS.cpp` 与 include 路径 `User_File/Application/Ins/`，`Debug` 构建链接通过。
+- 麦轮正运动学与 `SetVelocity()` 的逆运动学做了数值一致性核对，距离闭环在理想里程计模型下可收敛到 2 cm / 0.05 rad 判据内。
+- 更新 `User_File/Application/Chassis/Chassis.md` 的配置、接口和距离闭环说明。
+
+### 备注
+
+- 四轮地址对应轮位、滚子方向、极性沿用台架初值（1、3 正极性，2、4 反极性），必须按实车测量结果修改。
+- INS 与距离闭环尚未实车验证；`GYRO_WEIGHT`、轮径、旋转半径和 P 参数按《麦轮底盘惯导位置闭环第一版设计说明》第 11 节标定。
+- README 中“`InsTask` 等待陀螺仪完成通知并执行 `BSP_BMI088.EKF_Calculate()`”的描述已不适用于当前实现。
+
 ## 2026-06-01
 
 ### 已修复

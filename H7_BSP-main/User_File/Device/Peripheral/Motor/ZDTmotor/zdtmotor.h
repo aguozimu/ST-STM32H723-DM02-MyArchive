@@ -192,6 +192,13 @@ public:
 
     /** @brief 发送 1F，读取 FW_Ver、HW_Series、HW_Type 和 HW_Ver。 */
     bool ReadVersion();
+    /**
+     * @brief 只修改应用层方向标志，不重新 Init()、不重发任何命令。
+     * @param value true 表示应用层正方向与电机协议正方向相反。
+     * @note 用于台架标定轮子极性。控制方向与位置/速度反馈方向会同时翻转，
+     *       必须在电机停止时调用，否则位置反馈会出现一次跳变。
+     */
+    void SetReverse(bool value);
     /** @brief 发送 1A，读取 MotType、FwType、CtrMode、MotDir 等选项位。 */
     bool ReadOptionStatus();
     /** @brief 发送 24，读取单位为 mV 的总线电压 VBus。 */
