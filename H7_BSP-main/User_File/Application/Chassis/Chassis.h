@@ -84,9 +84,24 @@ struct Struct_Chassis_Motor_Config
 struct Struct_Chassis_Wheel_Feedback
 {
     float position_deg[CHASSIS_WHEEL_COUNT]{};   //!< 各轮实时位置。
-    float speed_rpm[CHASSIS_WHEEL_COUNT]{};      //!< 各轮实时转速。
+    float speed_rpm[CHASSIS_WHEEL_COUNT]{};      //!< 各轮 0x35 实时转速。
     uint32_t rx_count[CHASSIS_WHEEL_COUNT]{};    //!< 各轮已通过校验的反馈帧总数。
+    uint32_t speed_rx_count[CHASSIS_WHEEL_COUNT]{};    //!< 各轮 0x35 反馈帧数。
+    uint32_t position_rx_count[CHASSIS_WHEEL_COUNT]{}; //!< 各轮 0x36 反馈帧数。
+    uint32_t checksum_error_count[CHASSIS_WHEEL_COUNT]{}; //!< 各轮校验错误帧数。
+    uint32_t raw_rx_count[CHASSIS_WHEEL_COUNT]{}; //!< 各轮地址匹配但未校验的原始帧数。
     uint64_t timestamp_us[CHASSIS_WHEEL_COUNT]{}; //!< 各轮最近一帧反馈的时刻。
+    uint8_t last_function[CHASSIS_WHEEL_COUNT]{}; //!< 各轮最近一帧功能码。
+    uint8_t last_rx_length[CHASSIS_WHEEL_COUNT]{}; //!< 各轮最近一帧原始长度。
+    bool online[CHASSIS_WHEEL_COUNT]{};          //!< 各轮是否在线。
+};
+
+/** 底盘整体速度，x 向右、y 向前、omega 逆时针为正。 */
+struct Struct_Chassis_Velocity
+{
+    float x_m_s = 0.0f;
+    float y_m_s = 0.0f;
+    float omega_rad_s = 0.0f;
 };
 
 /** 麦克纳姆轮速度解算和四台 ZDT 电机的薄封装。 */
@@ -149,12 +164,44 @@ public:
     /** 停止四轮周期位置反馈；等价于 ConfigureOdometryFeedback(0)。 */
     bool StopOdometryFeedback();
 
+    /** 同时配置四轮 0x35 实际转速与 0x36 实时位置周期反馈。 */
+    bool ConfigureRealtimeFeedback(uint16_t period_ms);
+
+    /** 向四轮各发送一次 0x36 实时位置读取命令，用于反馈链路自检。 */
+    bool RequestPositionRead();
+
     /**
      * @brief 复制四轮反馈快照，供 INS 做航位推算。
      * @param feedback 输出快照，位置和转速已应用极性。
      * @return 固定返回 true；本层不判断电机是否在线。
      */
     bool GetWheelFeedback(Struct_Chassis_Wheel_Feedback &feedback) const;
+
+    /** 复制最近一次底盘逆解得到的目标轮速，单位 RPM。 */
+    void GetWheelTargetSpeedRpm(float speed_rpm[CHASSIS_WHEEL_COUNT]) const;
+
+    /** 取最近一次 SetVelocity() 的整机目标速度。 */
+    void GetTargetVelocity(Struct_Chassis_Velocity &velocity) const;
+
+    /** 根据四轮实测转速反算底盘整体速度。 */
+    void CalculateBodyVelocityFromWheelRpm(
+        const float wheel_speed_rpm[CHASSIS_WHEEL_COUNT],
+        Struct_Chassis_Velocity &velocity) const;
+
+    /**
+     * @brief 启动一次非阻塞相对位姿运动，由 Control_Task 周期调用 UpdateRelativePose()。
+     * @return true 已建立目标；false 参数非法或 INS 尚未就绪。
+     */
+    bool StartRelativePose(float x, float y, float omega, float distance_m);
+
+    /** 非阻塞更新相对位姿闭环；返回 true 表示仍在运动。 */
+    bool UpdateRelativePose();
+
+    /** 取消正在执行的相对位姿运动，不主动停车。 */
+    void CancelRelativePose();
+
+    /** 当前是否正在执行相对位姿运动。 */
+    bool IsRelativePoseActive() const;
 
     /**
      * @brief 走到相对当前位姿的目标点，阻塞执行。
@@ -185,6 +232,14 @@ private:
     Struct_Chassis_Config config{}; //!< 底盘尺寸配置副本。
     Struct_Chassis_Motor_Config motor_config[CHASSIS_WHEEL_COUNT]{}; //!< 四轮电机配置副本。
     Class_ZDTMotor motors[CHASSIS_WHEEL_COUNT]; //!< 左前、右前、左后、右后电机对象。
+    float target_speed_rpm[CHASSIS_WHEEL_COUNT]{}; //!< 最近一次 SetVelocity() 的目标轮速，单位 RPM。
+    Struct_Chassis_Velocity target_velocity{}; //!< 最近一次整机目标速度。
+    bool relative_pose_active = false; //!< 非阻塞相对位姿闭环是否正在运行。
+    bool relative_pose_result = false; //!< 最近一次相对位姿闭环是否成功到位。
+    uint32_t relative_pose_elapsed_ms = 0U; //!< 相对位姿闭环已运行时间。
+    float relative_pose_target_x_m = 0.0f; //!< 目标世界系 x。
+    float relative_pose_target_y_m = 0.0f; //!< 目标世界系 y。
+    float relative_pose_target_yaw_rad = 0.0f; //!< 目标世界系航向。
     std::atomic<uint32_t> run_remaining_ms{0U}; //!< 定时运行的剩余毫秒数，0 表示未运行。
 };
 

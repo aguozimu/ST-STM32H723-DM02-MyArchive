@@ -63,6 +63,7 @@ extern FDCAN_HandleTypeDef hfdcan3;
 
 static CAN_CallbackEntry_t Can_RxCallbacks[MAX_CAN_CALLBACKS];
 static Struct_CAN_Tx_Slot Can_TxSlots[CAN_TX_SLOT_COUNT];
+static Struct_CAN_Rx_Diagnostic Can_RxDiagnostics[3];
 static uint16_t Can_TxRoundRobin;
 
 static osMessageQueueId_t Can_TxQueue;
@@ -156,6 +157,24 @@ static void BSP_CAN_ExitCritical(uint32_t primask)
     }
 }
 
+/** @brief 取得指定 FDCAN 句柄对应的原始接收诊断槽。 */
+static Struct_CAN_Rx_Diagnostic *BSP_CAN_GetDiagnosticSlot(FDCAN_HandleTypeDef *hfdcan)
+{
+    if (hfdcan == &hfdcan1)
+    {
+        return (&Can_RxDiagnostics[0]);
+    }
+    if (hfdcan == &hfdcan2)
+    {
+        return (&Can_RxDiagnostics[1]);
+    }
+    if (hfdcan == &hfdcan3)
+    {
+        return (&Can_RxDiagnostics[2]);
+    }
+    return (NULL);
+}
+
 /**
  * @brief 配置并启动一条 FDCAN 总线的接收功能。
  * @param hfdcan 要配置的 FDCAN 总线句柄。
@@ -206,6 +225,7 @@ static void BSP_CAN_ConfigBus(FDCAN_HandleTypeDef *hfdcan)
 void BSP_CAN_ConfigInit(void)
 {
     memset(Can_TxSlots, 0, sizeof(Can_TxSlots));
+    memset(Can_RxDiagnostics, 0, sizeof(Can_RxDiagnostics));
     Can_TxRoundRobin = 0;
     memset(&Can_TxPendingMessage, 0, sizeof(Can_TxPendingMessage));
     Can_TxPending = 0;
@@ -335,7 +355,22 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
                                    &rx_header,
                                    rx_data) != HAL_OK)
         {
+            Struct_CAN_Rx_Diagnostic *error_diagnostic =
+                BSP_CAN_GetDiagnosticSlot(hfdcan);
+            if (error_diagnostic != NULL)
+            {
+                error_diagnostic->rx_read_error_count++;
+            }
             break;
+        }
+
+        Struct_CAN_Rx_Diagnostic *diagnostic = BSP_CAN_GetDiagnosticSlot(hfdcan);
+        if (diagnostic != NULL)
+        {
+            diagnostic->rx_count++;
+            diagnostic->last_id = rx_header.Identifier;
+            diagnostic->last_length = (uint8_t)rx_header.DataLength;
+            memcpy(diagnostic->last_data, rx_data, FDCAN_MAX_PAYLOAD);
         }
 
         for (index = 0; index < MAX_CAN_CALLBACKS; index++)
@@ -357,6 +392,21 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan,
             }
         }
     }
+}
+
+bool BSP_CAN_GetRxDiagnostic(FDCAN_HandleTypeDef *hfdcan,
+                            Struct_CAN_Rx_Diagnostic *diagnostic)
+{
+    Struct_CAN_Rx_Diagnostic *slot = BSP_CAN_GetDiagnosticSlot(hfdcan);
+    if (slot == NULL || diagnostic == NULL)
+    {
+        return false;
+    }
+
+    const uint32_t primask = BSP_CAN_EnterCritical();
+    *diagnostic = *slot;
+    BSP_CAN_ExitCritical(primask);
+    return true;
 }
 
 /**

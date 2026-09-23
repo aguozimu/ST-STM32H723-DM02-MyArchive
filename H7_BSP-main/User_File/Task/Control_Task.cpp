@@ -1,13 +1,15 @@
 /**
  * @file Control_Task.cpp
- * @brief 初始化麦轮底盘，打开四轮位置反馈，并执行相对位姿闭环示例。
+ * @brief 初始化麦轮底盘，打开四轮位置反馈，并接收 UART7 速度/距离命令。
  */
 
 #include "user_task.h"
 
 #include "Chassis.h"
 #include "INS.h"
+#include "dvc_serial_command.h"
 
+#include <cmath>
 #include <cstdint>
 
 namespace
@@ -28,13 +30,28 @@ constexpr uint16_t ZDT_ACCELERATION = 10U;
 constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
 constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 2000U;
 constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 200U;
-/** 等 InsTask 更新几拍，确保 RunToRelativePose() 能读到有效位姿。 */
+/** 等 InsTask 更新几拍，确保距离命令能读到有效位姿。 */
 constexpr uint32_t INS_READY_SETTLE_TICKS = 200U;
 
-/** 验收动作参数：沿车头方向走 1 m、向右横移 0.5 m、原地逆时针转 90 度。 */
-constexpr float DEMO_FORWARD_DISTANCE_M = 1.0f;
-constexpr float DEMO_SIDEWAY_DISTANCE_M = 0.5f;
-constexpr float DEMO_TURN_ANGLE_RAD = 1.5707963f;
+/** 命令方向角与闭环周期。 */
+constexpr float DEG_TO_RAD = 3.14159265358979f / 180.0f;
+constexpr uint32_t CONTROL_PERIOD_MS = 10U;
+constexpr uint32_t FEEDBACK_RETRY_PERIOD_MS = 1000U;
+constexpr uint32_t POSITION_READ_TEST_PERIOD_MS = 200U;
+constexpr float STARTUP_FORWARD_SPEED_M_S = 0.05f;
+
+float Clamp_Symmetric(float value, float limit)
+{
+    if (value > limit)
+    {
+        return limit;
+    }
+    if (value < -limit)
+    {
+        return -limit;
+    }
+    return value;
+}
 
 void InitChassis()
 {
@@ -81,11 +98,89 @@ void InitChassis()
     APP_INS.Init(chassis_config);
 }
 
-[[noreturn]] void HoldTask()
+void Ensure_Realtime_Feedback(uint32_t now_ms)
 {
-    for (;;)
+    static uint32_t next_retry_ms = FEEDBACK_RETRY_PERIOD_MS;
+    if (now_ms < next_retry_ms)
     {
-        osDelay(1000U);
+        return;
+    }
+    next_retry_ms = now_ms + FEEDBACK_RETRY_PERIOD_MS;
+
+    Struct_Chassis_Wheel_Feedback feedback{};
+    APP_Chassis.GetWheelFeedback(feedback);
+    for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
+    {
+        if ((feedback.speed_rx_count[i] == 0U) ||
+            (feedback.position_rx_count[i] == 0U))
+        {
+            APP_Chassis.ConfigureRealtimeFeedback(ODOMETRY_FEEDBACK_PERIOD_MS);
+            return;
+        }
+    }
+}
+
+void Ensure_Position_Read_Test(uint32_t now_ms)
+{
+    static uint32_t next_read_ms = POSITION_READ_TEST_PERIOD_MS;
+    if (now_ms < next_read_ms)
+    {
+        return;
+    }
+    next_read_ms = now_ms + POSITION_READ_TEST_PERIOD_MS;
+
+    Struct_Chassis_Wheel_Feedback feedback{};
+    APP_Chassis.GetWheelFeedback(feedback);
+    for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
+    {
+        if (feedback.position_rx_count[i] == 0U)
+        {
+            APP_Chassis.RequestPositionRead();
+            return;
+        }
+    }
+}
+
+void Handle_Command(const Struct_SerialCommand &command)
+{
+    switch (command.type)
+    {
+    case Enum_SerialCommand_Type::VELOCITY:
+    {
+        APP_Chassis.CancelRelativePose();
+        const float direction_rad = command.direction_deg * DEG_TO_RAD;
+        const float speed_m_s = Clamp_Symmetric(command.value, MAX_LINEAR_SPEED_M_S);
+        const float omega_rad_s =
+            Clamp_Symmetric(command.omega_rad_s, MAX_ANGULAR_SPEED_RAD_S);
+        APP_Chassis.SetVelocity(speed_m_s * std::sin(direction_rad),
+                                speed_m_s * std::cos(direction_rad),
+                                omega_rad_s);
+        break;
+    }
+
+    case Enum_SerialCommand_Type::DISTANCE:
+    {
+        const float direction_rad = command.direction_deg * DEG_TO_RAD;
+        const float omega_rad_s =
+            Clamp_Symmetric(command.omega_rad_s, MAX_ANGULAR_SPEED_RAD_S);
+        if (!APP_Chassis.StartRelativePose(std::sin(direction_rad),
+                                           std::cos(direction_rad),
+                                           omega_rad_s,
+                                           command.value))
+        {
+            APP_Chassis.Stop();
+        }
+        break;
+    }
+
+    case Enum_SerialCommand_Type::STOP:
+        APP_Chassis.CancelRelativePose();
+        APP_Chassis.Stop();
+        break;
+
+    case Enum_SerialCommand_Type::NONE:
+    default:
+        break;
     }
 }
 
@@ -93,23 +188,42 @@ void InitChassis()
 
 extern "C" void Control_Task(void *argument)
 {
+
     (void)argument;
     osThreadSetPriority(osThreadGetId(), osPriorityHigh1);
 
     osDelay(ZDT_BOOT_DELAY_TICKS);
     InitChassis();
 
-    // 四轮开始周期返回 0x36 实时位置，INS 才有里程计输入。
-    APP_Chassis.ConfigureOdometryFeedback(ODOMETRY_FEEDBACK_PERIOD_MS);
+    // 先使能并停车，再配置 0x35 实际转速和 0x36 实时位置反馈。
     APP_Chassis.Enable();
-
+    APP_Chassis.Stop();
+     APP_Chassis.Disable();
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
-    osDelay(INS_READY_SETTLE_TICKS);
-    //APP_Chassis.RunForSeconds(0.2f, 0.0f, 0.0f, 3);
-    // 相对位姿闭环验收动作：沿当前车头前进、向右横移、原地逆时针转 90 度。
-    APP_Chassis.RunToRelativePose(0.0f, 0.5f, 0.0f, DEMO_FORWARD_DISTANCE_M);
-    //APP_Chassis.RunToRelativePose(0.5f, 0.0f, 0.0f, DEMO_SIDEWAY_DISTANCE_M);
-   // APP_Chassis.RunToRelativePose(0.0f, 0.0f, DEMO_TURN_ANGLE_RAD, 0.0f);
 
-    HoldTask();
+    // 四轮同时返回 0x35 转速与 0x36 位置，INS 使用位置，遥测使用实际转速。
+    APP_Chassis.ConfigureRealtimeFeedback(ODOMETRY_FEEDBACK_PERIOD_MS);
+    osDelay(INS_READY_SETTLE_TICKS);
+
+    // 上电自动测试：整车缓慢向前，后续 UART7 命令仍可覆盖和停车。
+    APP_Chassis.SetVelocity(0.0f, STARTUP_FORWARD_SPEED_M_S, 0.0f);
+    for (;;)
+    {
+        Struct_SerialCommand command{};
+        while (SerialCommand.Read(command))
+        {
+            Handle_Command(command);
+        }
+
+        const uint32_t now_ms = osKernelGetTickCount();
+        Ensure_Position_Read_Test(now_ms);
+        Ensure_Realtime_Feedback(now_ms);
+
+        if (APP_Chassis.IsRelativePoseActive())
+        {
+            APP_Chassis.UpdateRelativePose();
+        }
+
+        osDelay(CONTROL_PERIOD_MS);
+    }
 }

@@ -15,6 +15,7 @@
 #include "bsp_ws2812.h"
 #include "callback.h"
 #include "dvc_erictool.h"
+#include "dvc_serial_command.h"
 #include "sys_debug.h"
 #include "sys_imu.h"
 #include "sys_timestamp.h"
@@ -38,10 +39,14 @@ extern "C" void System_Init(void)
     UART_Init(&huart4, nullptr);
     UART_Init(&huart5, nullptr);
     UART_Init(&huart6, nullptr);
-    UART_Init(&huart7, nullptr);
+    // UART7 原 bsp_uart 接收链路停用，改由 dvc_teleplot 直接使用 TX DMA。
+    // UART_Init(&huart7, nullptr);
     UART_Init(&huart8, nullptr);
     UART_Init(&huart9, nullptr);
     UART_Init(&huart10, nullptr);
+
+    // UART7 自定义文本命令接收；不经过已停用的原 bsp_uart/EricTool 链路。
+    SerialCommand.Init(&huart7);
 
     // 陀螺仪的SPI
     SPI_Init(&hspi2, SPI2_Callback);
@@ -63,7 +68,8 @@ extern "C" void System_Init(void)
     ADC_Init(&hadc1, 1);
     BSP_Power.Init(true, true, true);
     EricTool_USB.Init();
-    EricTool_UART.Init(&huart7);
+    // UART7 原 EricTool justfloat 链路停用，不删除；波形由 dvc_teleplot 接管。
+    // EricTool_UART.Init(&huart7);
     BSP_BMI088.BMI088_Gyro.Start_FIFO_Acquisition();
     
     init_finished = true;

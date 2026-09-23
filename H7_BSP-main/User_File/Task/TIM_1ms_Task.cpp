@@ -22,6 +22,7 @@
 #include "bsp_key.h"
 #include "bsp_uart.h"
 #include "bsp_w25q64jv.h"
+#include "dvc_teleplot.h"
 #include <cstddef>
 extern timesmode_t tick;
 
@@ -52,6 +53,8 @@ extern "C" void TIM1msTask(void *argument) {
             BMI088_TIM_1ms_Service_PeriodElapsedCallback,
             UART_TIM_1ms_Recover_PeriodElapsedCallback,
             APP_Chassis_TIM_1ms_RunForSeconds_PeriodElapsedCallback);
+      // Teleplot 在任务上下文按 1 ms 计数，模块内部自行分频到设定发送周期。
+      Teleplot.TIM_1ms_Tick();
       pulse(10, 1, BSP_WS2812_TIM_10ms_Write_PeriodElapsedCallback);
       pulse(50, 1, BSP_Key_TIM_50ms_Process_PeriodElapsedCallback);
       pulse(128, 1, BMI088_TIM_128ms_Calculate_PeriodElapsedCallback);

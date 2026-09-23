@@ -130,6 +130,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/SystemView/FreeRTOS/Config/SEGGER_SYSVIEW_Config_FreeRTOS.c
         ${CMAKE_CURRENT_LIST_DIR}/SystemView/SEGGER/SEGGER_RTT_ASM_ARMv7M.S
         ${CMAKE_CURRENT_LIST_DIR}/User_File/System/Init/Init.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/User_File/Application/Communication/dvc_serial_command.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/InsTask.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/TransportTask.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/CanTxTask.cpp
@@ -144,6 +145,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Device/Onboard/Key/bsp_key.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Device/Onboard/WS2812/bsp_ws2812.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Device/Peripheral/EricTool/dvc_erictool.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/User_File/Device/Peripheral/Teleplot/dvc_teleplot.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/TIM_1ms_Task.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/BMI088_Task.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/StorageTask.cpp
@@ -197,6 +199,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         User_File/Device/Onboard/Key
         User_File/Device/Onboard/WS2812
         User_File/Device/Peripheral/EricTool
+        User_File/Device/Peripheral/Teleplot
         User_File/Device/Peripheral/Motor/QDrive
         User_File/Device/Peripheral/Motor/DMmotor
         User_File/Device/Peripheral/Motor/ZDTmotor

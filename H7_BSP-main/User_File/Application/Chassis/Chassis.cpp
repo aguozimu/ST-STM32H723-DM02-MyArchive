@@ -106,6 +106,9 @@ void Class_Chassis::Enable()
 void Class_Chassis::SetVelocity(float x, float y, float omega)
 {
     CancelRunTimer();
+    target_velocity.x_m_s = x;
+    target_velocity.y_m_s = y;
+    target_velocity.omega_rad_s = omega;
 
     // 麦轮旋转项 R*omega，其中 R 为底盘半长与半宽之和。
     const float rotation = (config.half_length + config.half_width) * omega;
@@ -121,7 +124,8 @@ void Class_Chassis::SetVelocity(float x, float y, float omega)
     // 将解算速度换算为 RPM，并把四条速度命令缓存到 ZDT 电机。
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
-        motors[i].SetSpeed(wheel_speed[i] * motor_config[i].speed_to_motor,
+        target_speed_rpm[i] = wheel_speed[i] * motor_config[i].speed_to_motor;
+        motors[i].SetSpeed(target_speed_rpm[i],
                            motor_config[i].acceleration,
                            true);
     }
@@ -155,6 +159,8 @@ void Class_Chassis::RunForSeconds(float x,
         }
     }
 
+    // 定时运行与相对位姿闭环互斥。
+    CancelRelativePose();
     // SetVelocity() 会先取消旧倒计时，随后用新的时长开始毫秒倒计时。
     SetVelocity(x, y, omega);
     run_remaining_ms.store(duration_ms, std::memory_order_release);
@@ -191,10 +197,13 @@ void Class_Chassis::Process()
 void Class_Chassis::Stop()
 {
     CancelRunTimer();
+    CancelRelativePose();
+    target_velocity = {};
 
     // 先缓存四条停止命令，再通过一次广播让四轮同时停止。
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
+        target_speed_rpm[i] = 0.0f;
         motors[i].Stop(true);
     }
     motors[Chassis_Wheel_LeftFront].TriggerSynchronousMotion();
@@ -203,10 +212,13 @@ void Class_Chassis::Stop()
 void Class_Chassis::Disable()
 {
     CancelRunTimer();
+    CancelRelativePose();
+    target_velocity = {};
 
     // 先缓存四条失能命令，再通过一次广播让四轮同时失能。
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
+        target_speed_rpm[i] = 0.0f;
         motors[i].Disable(true);
     }
     motors[Chassis_Wheel_LeftFront].TriggerSynchronousMotion();
@@ -234,6 +246,27 @@ bool Class_Chassis::StopOdometryFeedback()
     return ConfigureOdometryFeedback(0U);
 }
 
+bool Class_Chassis::ConfigureRealtimeFeedback(uint16_t period_ms)
+{
+    bool ok = true;
+    for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
+    {
+        ok = motors[i].ConfigurePeriodicFeedback(0x35U, period_ms) && ok;
+        ok = motors[i].ConfigurePeriodicFeedback(0x36U, period_ms) && ok;
+    }
+    return ok;
+}
+
+bool Class_Chassis::RequestPositionRead()
+{
+    bool ok = true;
+    for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
+    {
+        ok = motors[i].ReadPosition() && ok;
+    }
+    return ok;
+}
+
 bool Class_Chassis::GetWheelFeedback(Struct_Chassis_Wheel_Feedback &feedback) const
 {
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
@@ -242,12 +275,66 @@ bool Class_Chassis::GetWheelFeedback(Struct_Chassis_Wheel_Feedback &feedback) co
         feedback.position_deg[i] = motor_feedback.position_deg;
         feedback.speed_rpm[i] = motor_feedback.speed_rpm;
         feedback.rx_count[i] = motor_feedback.rx_count;
+        feedback.speed_rx_count[i] = motor_feedback.speed_rx_count;
+        feedback.position_rx_count[i] = motor_feedback.position_rx_count;
+        feedback.checksum_error_count[i] = motor_feedback.checksum_error_count;
+        feedback.raw_rx_count[i] = motor_feedback.raw_rx_count;
         feedback.timestamp_us[i] = motor_feedback.last_rx_timestamp_us;
+        feedback.last_function[i] = motor_feedback.last_function;
+        feedback.last_rx_length[i] = motor_feedback.last_rx_length;
+        feedback.online[i] = motor_feedback.online;
     }
     return true;
 }
 
-bool Class_Chassis::RunToRelativePose(float x, float y, float omega, float distance_m)
+void Class_Chassis::GetWheelTargetSpeedRpm(float speed_rpm[CHASSIS_WHEEL_COUNT]) const
+{
+    if (speed_rpm == nullptr)
+    {
+        return;
+    }
+
+    for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
+    {
+        speed_rpm[i] = target_speed_rpm[i];
+    }
+}
+
+void Class_Chassis::GetTargetVelocity(Struct_Chassis_Velocity &velocity) const
+{
+    velocity = target_velocity;
+}
+
+void Class_Chassis::CalculateBodyVelocityFromWheelRpm(
+    const float wheel_speed_rpm[CHASSIS_WHEEL_COUNT],
+    Struct_Chassis_Velocity &velocity) const
+{
+    velocity = {};
+    if (wheel_speed_rpm == nullptr)
+    {
+        return;
+    }
+
+    const float gear_ratio = config.gear_ratio > 0.0f ? config.gear_ratio : 1.0f;
+    const float rpm_to_wheel_m_s = (2.0f * PI_F * config.wheel_radius_m) / (60.0f * gear_ratio);
+    const float wheel_m_s[CHASSIS_WHEEL_COUNT] = {
+        wheel_speed_rpm[Chassis_Wheel_LeftFront] * rpm_to_wheel_m_s,
+        wheel_speed_rpm[Chassis_Wheel_RightFront] * rpm_to_wheel_m_s,
+        wheel_speed_rpm[Chassis_Wheel_LeftRear] * rpm_to_wheel_m_s,
+        wheel_speed_rpm[Chassis_Wheel_RightRear] * rpm_to_wheel_m_s,
+    };
+
+    velocity.x_m_s = (wheel_m_s[0] - wheel_m_s[1] - wheel_m_s[2] + wheel_m_s[3]) * 0.25f;
+    velocity.y_m_s = (wheel_m_s[0] + wheel_m_s[1] + wheel_m_s[2] + wheel_m_s[3]) * 0.25f;
+
+    const float rotation_radius = config.half_length + config.half_width;
+    const float rotation_speed =
+        (-wheel_m_s[0] + wheel_m_s[1] - wheel_m_s[2] + wheel_m_s[3]) * 0.25f;
+    velocity.omega_rad_s =
+        rotation_radius > DIRECTION_EPSILON ? rotation_speed / rotation_radius : 0.0f;
+}
+
+bool Class_Chassis::StartRelativePose(float x, float y, float omega, float distance_m)
 {
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(omega) ||
         !std::isfinite(distance_m) || (distance_m < 0.0f))
@@ -258,13 +345,16 @@ bool Class_Chassis::RunToRelativePose(float x, float y, float omega, float dista
     const float direction_norm = std::sqrt(x * x + y * y);
     if ((distance_m > 0.0f) && (direction_norm < DIRECTION_EPSILON))
     {
-        // 要走一段距离却没有给出平移方向，属于参数非法。
         return false;
     }
 
+    CancelRunTimer();
+
     if ((distance_m == 0.0f) && (omega == 0.0f))
     {
-        // 既不平移也不转向，空操作，不打扰正在进行的运动。
+        CancelRelativePose();
+        relative_pose_result = true;
+        Stop();
         return true;
     }
 
@@ -274,7 +364,6 @@ bool Class_Chassis::RunToRelativePose(float x, float y, float omega, float dista
         return false;
     }
 
-    // 方向只取单位向量，模长不参与距离计算。
     float dx_body_target = 0.0f;
     float dy_body_target = 0.0f;
     if (direction_norm > DIRECTION_EPSILON)
@@ -283,51 +372,90 @@ bool Class_Chassis::RunToRelativePose(float x, float y, float omega, float dista
         dy_body_target = y / direction_norm * distance_m;
     }
 
-    // 目标点由调用瞬间的位姿算出，机体系位移转到世界系后叠加到起点上。
     const float start_cos = std::cos(start.yaw_rad);
     const float start_sin = std::sin(start.yaw_rad);
-    const float target_x =
+    relative_pose_target_x_m =
         start.x_m + start_cos * dx_body_target - start_sin * dy_body_target;
-    const float target_y =
+    relative_pose_target_y_m =
         start.y_m + start_sin * dx_body_target + start_cos * dy_body_target;
-    const float target_yaw = Wrap_Angle(start.yaw_rad + omega);
-
-    uint32_t elapsed_ms = 0U;
-    while (elapsed_ms < TIMEOUT_MS)
-    {
-        const Struct_INS_State state = APP_INS.GetState();
-
-        const float ex_world = target_x - state.x_m;
-        const float ey_world = target_y - state.y_m;
-        const float eyaw = Wrap_Angle(target_yaw - state.yaw_rad);
-
-        if ((std::fabs(ex_world) < POSITION_TOLERANCE_M) &&
-            (std::fabs(ey_world) < POSITION_TOLERANCE_M) &&
-            (std::fabs(eyaw) < YAW_TOLERANCE_RAD))
-        {
-            Stop();
-            return true;
-        }
-
-        // 世界系误差换算到机体系后直接用 P 控制，限幅后交给麦轮逆运动学。
-        const float yaw_cos = std::cos(state.yaw_rad);
-        const float yaw_sin = std::sin(state.yaw_rad);
-        const float ex_body = yaw_cos * ex_world + yaw_sin * ey_world;
-        const float ey_body = -yaw_sin * ex_world + yaw_cos * ey_world;
-
-        SetVelocity(Clamp(KP_XY * ex_body, config.max_linear_speed_m_s),
-                    Clamp(KP_XY * ey_body, config.max_linear_speed_m_s),
-                    Clamp(KP_YAW * eyaw, config.max_angular_speed_rad_s));
-
-        // 阻塞等待期间 InsTask 仍在更新位姿，下一轮用新位姿重新计算误差。
-        osDelay(CONTROL_PERIOD_MS);
-        elapsed_ms += CONTROL_PERIOD_MS;
-    }
-
-    Stop();
-    return false;
+    relative_pose_target_yaw_rad = Wrap_Angle(start.yaw_rad + omega);
+    relative_pose_elapsed_ms = 0U;
+    relative_pose_result = false;
+    relative_pose_active = true;
+    return true;
 }
 
+bool Class_Chassis::UpdateRelativePose()
+{
+    if (!relative_pose_active)
+    {
+        return false;
+    }
+
+    if (relative_pose_elapsed_ms >= TIMEOUT_MS)
+    {
+        relative_pose_active = false;
+        relative_pose_result = false;
+        Stop();
+        return false;
+    }
+
+    const Struct_INS_State state = APP_INS.GetState();
+    const float ex_world = relative_pose_target_x_m - state.x_m;
+    const float ey_world = relative_pose_target_y_m - state.y_m;
+    const float eyaw = Wrap_Angle(relative_pose_target_yaw_rad - state.yaw_rad);
+
+    if ((std::fabs(ex_world) < POSITION_TOLERANCE_M) &&
+        (std::fabs(ey_world) < POSITION_TOLERANCE_M) &&
+        (std::fabs(eyaw) < YAW_TOLERANCE_RAD))
+    {
+        relative_pose_active = false;
+        relative_pose_result = true;
+        Stop();
+        return false;
+    }
+
+    const float yaw_cos = std::cos(state.yaw_rad);
+    const float yaw_sin = std::sin(state.yaw_rad);
+    const float ex_body = yaw_cos * ex_world + yaw_sin * ey_world;
+    const float ey_body = -yaw_sin * ex_world + yaw_cos * ey_world;
+
+    SetVelocity(Clamp(KP_XY * ex_body, config.max_linear_speed_m_s),
+                Clamp(KP_XY * ey_body, config.max_linear_speed_m_s),
+                Clamp(KP_YAW * eyaw, config.max_angular_speed_rad_s));
+
+    relative_pose_elapsed_ms += CONTROL_PERIOD_MS;
+    return true;
+}
+
+void Class_Chassis::CancelRelativePose()
+{
+    relative_pose_active = false;
+}
+
+bool Class_Chassis::IsRelativePoseActive() const
+{
+    return relative_pose_active;
+}
+
+bool Class_Chassis::RunToRelativePose(float x, float y, float omega, float distance_m)
+{
+    if (!StartRelativePose(x, y, omega, distance_m))
+    {
+        return false;
+    }
+
+    while (relative_pose_active)
+    {
+        UpdateRelativePose();
+        if (relative_pose_active)
+        {
+            osDelay(CONTROL_PERIOD_MS);
+        }
+    }
+
+    return relative_pose_result;
+}
 bool Class_Chassis::SetWheelPolarity(Enum_Chassis_Wheel wheel, int8_t polarity)
 {
     if ((wheel >= CHASSIS_WHEEL_COUNT) || ((polarity != 1) && (polarity != -1)))

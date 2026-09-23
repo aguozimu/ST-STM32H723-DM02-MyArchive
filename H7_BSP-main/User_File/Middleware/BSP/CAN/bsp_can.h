@@ -51,6 +51,16 @@ typedef void (*CAN_RxCallback_t)(FDCAN_HandleTypeDef *hfdcan,
                                  uint32_t len,
                                  void *context);
 
+/** CAN 原始接收诊断，用于区分“总线无帧”和“软件回调未匹配”。 */
+typedef struct
+{
+    uint32_t rx_count;
+    uint32_t last_id;
+    uint32_t rx_read_error_count;
+    uint8_t last_length;
+    uint8_t last_data[FDCAN_MAX_PAYLOAD];
+} Struct_CAN_Rx_Diagnostic;
+
 /**
  * @brief 一帧完整的 Classic CAN 发送数据。
  * @note 队列和周期槽都会复制结构体内容，调用者可以使用局部变量。
@@ -69,6 +79,10 @@ typedef struct
  * @note 应在 RTOS 内核初始化完成后、创建 CAN 发送任务前调用一次。
  */
 void BSP_CAN_ConfigInit(void);
+
+/** 读取指定 FDCAN 总线收到的原始帧诊断快照。 */
+bool BSP_CAN_GetRxDiagnostic(FDCAN_HandleTypeDef *hfdcan,
+                            Struct_CAN_Rx_Diagnostic *diagnostic);
 
 /**
  * @brief 注册一个接收回调。

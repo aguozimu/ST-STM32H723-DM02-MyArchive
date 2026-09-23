@@ -350,7 +350,8 @@ void Class_EricTool_USB::Output()
 
 void EricTool_Send_Telemetry(void) {
   EricTool_USB.TIM_1ms_Write_PeriodElapsedCallback();  // USB 遥测
-  EricTool_UART.TIM_1ms_Write_PeriodElapsedCallback(); // UART justfloat
+  // UART7 原 justfloat 发送停用，改由 dvc_teleplot 接管；保留代码便于恢复。
+  // EricTool_UART.TIM_1ms_Write_PeriodElapsedCallback();
 }
 
     /************************ COPYRIGHT(C) USTC-ROBOWALKER **************************/

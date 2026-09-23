@@ -16,6 +16,7 @@
 /* Includes ------------------------------------------------------------------*/
 
 #include "bsp_uart.h"
+#include "dvc_serial_command.h"
 
 /* Private macros ------------------------------------------------------------*/
 
@@ -309,6 +310,12 @@ extern "C" void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t S
  */
 extern "C" void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
+    if ((huart != nullptr) && (huart->Instance == UART7))
+    {
+        SerialCommand.ErrorCallback(huart);
+        return;
+    }
+
     Struct_UART_Manage_Object *manage = UART_Get_Manage_Object(huart);
     if (manage == nullptr || huart->hdmarx == nullptr)
     {

@@ -671,6 +671,7 @@ void Class_ZDTMotor::ParseFeedback(const uint8_t *data, uint8_t length)
     case 0x35U:
         if (length == 5U)
         {
+            feedback.speed_rx_count++;
             /* 35 返回 Sign(00=正/01=负) + Speed[2]；X 单位 0.1 RPM，Emm 为 RPM。 */
             float speed = (float)ZDT_ReadBE16(&data[2]);
             if (firmware == Enum_ZDTMotor_Firmware::X)
@@ -688,6 +689,7 @@ void Class_ZDTMotor::ParseFeedback(const uint8_t *data, uint8_t length)
     case 0x36U:
         if (length == 7U)
         {
+            feedback.position_rx_count++;
             /* 36 返回 Sign(00=正/01=负)；X 为 0.1 度，Emm 为 65536/圈。 */
             float position = (float)ZDT_ReadBE32(&data[2]);
             position = firmware == Enum_ZDTMotor_Firmware::X
@@ -794,6 +796,11 @@ void Class_ZDTMotor::FeedbackCallback(FDCAN_HandleTypeDef *callback_hfdcan,
     {
         return;
     }
+
+    motor->feedback.raw_rx_count++;
+    motor->feedback.last_rx_id = id;
+    motor->feedback.last_rx_length = (uint8_t)len;
+    std::memcpy(motor->feedback.last_rx_data, data, len);
 
     if (!motor->CheckResponseChecksum(data, (uint8_t)len))
     {
