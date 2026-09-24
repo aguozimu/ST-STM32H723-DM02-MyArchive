@@ -155,6 +155,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/Control_Task.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Application/Gimbal/Gimbal.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Application/Chassis/Chassis.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/User_File/Application/INS/INS.cpp
 
 )
 
@@ -203,6 +204,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         User_File/Middleware/Algorithm/Pulse/
         User_File/Application/Gimbal/
         User_File/Application/Chassis/
+        User_File/Application/INS/
         User_File/Application/Communication/
         User_File/Application/Balance/
 )

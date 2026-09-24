@@ -5,6 +5,7 @@
 
 #include "user_task.h"
 #include "Chassis.h"
+#include "INS.h"
 
 #include <cstdint>
 
@@ -15,6 +16,8 @@ constexpr uint16_t ZDT_ACCELERATION = 10U;
 constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
 constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 2000U;
 constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 200U;
+constexpr float CHASSIS_WHEEL_RADIUS_M = 0.05f;
+constexpr float CHASSIS_GEAR_RATIO = 1.0f;
 
 void InitChassis()
 {
@@ -41,6 +44,14 @@ void InitChassis()
     }
 
     APP_Chassis.Init(chassis_config, motor_config);
+
+    /* INS 平移只使用轮式里程计，BMI088 在函数 2 中仅提供 Yaw 融合。 */
+    Struct_INS_Config ins_config{};
+    ins_config.half_length_m = chassis_config.half_length;
+    ins_config.half_width_m = chassis_config.half_width;
+    ins_config.wheel_radius_m = CHASSIS_WHEEL_RADIUS_M;
+    ins_config.gear_ratio = CHASSIS_GEAR_RATIO;
+    APP_INS.Init(ins_config);
 }
 
 [[noreturn]] void HoldTask()
@@ -63,10 +74,10 @@ extern "C" void Control_Task(void *argument)
     APP_Chassis.Enable();
 
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
-    APP_Chassis.RunForSeconds(-30.0f,
-                              -50.0f,
+    APP_Chassis.RunForSeconds(30.0f,
+                              50.0f,
                               0.0f,
-                             20.0f);
+                             3.0f);
        //APP_Chassis.Disable();                       
     HoldTask();
 }

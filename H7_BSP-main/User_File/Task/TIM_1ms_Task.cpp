@@ -8,7 +8,7 @@
  * @details
  * 通过 pulse() 可变参数接口注册不同周期的回调函数:
  *   - 1ms:  W25Q64JV 超时检测 / 按键扫描
- *   - 10ms: WS2812 灯效刷新
+ *   - 10ms: INS 轮式/陀螺仪/互补滤波位姿更新 / WS2812 灯效刷新
  *   - 50ms: 按键消抖
  *   - 128ms: BMI088 姿态解算
  *
@@ -18,6 +18,7 @@
  */
 
 #include "user_task.h"
+#include "INS.h"
 #include "bsp_key.h"
 #include "bsp_uart.h"
 #include "bsp_w25q64jv.h"
@@ -50,7 +51,12 @@ extern "C" void TIM1msTask(void *argument) {
       pulse(1, 4, W25Q64JV_AutoPolling_Callback, BSP_Key_TIM_1ms_Process_PeriodElapsedCallback,
             BMI088_TIM_1ms_Service_PeriodElapsedCallback,
             UART_TIM_1ms_Recover_PeriodElapsedCallback);
-      pulse(10, 1, BSP_WS2812_TIM_10ms_Write_PeriodElapsedCallback);
+      /* 10 ms 顺序执行：轮式正运动学 -> 陀螺仪 Yaw -> 互补滤波。 */
+      pulse(10, 4,
+            INS_TIM_10ms_UpdateWheelPosition_PeriodElapsedCallback,
+            INS_TIM_10ms_UpdateGyroPosition_PeriodElapsedCallback,
+            INS_TIM_10ms_UpdateComplementaryPosition_PeriodElapsedCallback,
+            BSP_WS2812_TIM_10ms_Write_PeriodElapsedCallback);
       pulse(50, 1, BSP_Key_TIM_50ms_Process_PeriodElapsedCallback);
       pulse(128, 1, BMI088_TIM_128ms_Calculate_PeriodElapsedCallback);
 
