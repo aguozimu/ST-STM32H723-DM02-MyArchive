@@ -16,6 +16,8 @@
 
 /** 麦克纳姆底盘固定使用四个车轮。 */
 static constexpr uint8_t CHASSIS_WHEEL_COUNT = 4U;
+/** 四台 ZDT 电机周期反馈默认发送周期，单位 ms。 */
+static constexpr uint16_t CHASSIS_MOTOR_FEEDBACK_PERIOD_MS = 10U;
 
 /**
  * @brief 车轮在配置数组、电机数组和速度数组中的固定下标。
@@ -93,16 +95,18 @@ public:
      * @param omega 逆时针为正的底盘角速度。
      * @param duration_s 运行时长，单位 s，使用 float 表示。
      *
-     * 本接口设置 1 ms 倒计时后立即返回；倒计时结束时同步停止四台电机。
-     * 再次调用本接口会以新的速度和时长覆盖尚未结束的定时运行。
+     * 本接口使用 osDelay() 阻塞当前任务，延时结束后同步停止四台电机。
      */
     void RunForSeconds(float x, float y, float omega, float duration_s);
 
-    /** 由 TIM_1ms_Task 每 1 ms 调用，维护 RunForSeconds() 的非阻塞倒计时。 */
-    void TIM_1ms_RunForSeconds_PeriodElapsedCallback();
-
     /** 周期调用四台 ZDT 电机的 Process()，维护底层应答和在线状态。 */
     void Process();
+
+    /** 为四台电机配置速度与位置周期返回；period_ms 为 0 时停止返回。 */
+    void ConfigurePeriodicFeedback(uint16_t period_ms = CHASSIS_MOTOR_FEEDBACK_PERIOD_MS);
+
+    /** 按车轮顺序读取一台电机的反馈快照；索引越界或尚未初始化时返回默认值。 */
+    Struct_ZDTMotor_Feedback GetMotorFeedback(uint8_t motor_index) const;
 
     /** 为四台电机缓存停止命令，再发送一次 ZDT 广播同步触发。 */
     void Stop();
@@ -111,27 +115,13 @@ public:
     void Disable();
 
 private:
-    /** 取消尚未结束的定时运行倒计时。 */
-    void CancelRunTimer();
-
     Struct_Chassis_Config config{}; //!< 底盘尺寸配置副本。
     Struct_Chassis_Motor_Config motor_config[CHASSIS_WHEEL_COUNT]{}; //!< 四轮电机配置副本。
     Class_ZDTMotor motors[CHASSIS_WHEEL_COUNT]; //!< 左前、右前、左后、右后电机对象。
-    std::atomic<uint32_t> run_remaining_ms{0U}; //!< 定时运行的剩余毫秒数，0 表示未运行。
+    std::atomic<bool> initialized{false}; //!< 四台电机 Init() 完成后才允许任务读取反馈。
 };
 
-/** Control_Task 与 TIM_1ms_Task 共用的应用层底盘实例。 */
+/** 各任务共用的应用层底盘实例。 */
 extern Class_Chassis APP_Chassis;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/** TIM_1ms_Task 使用的底盘定时运行回调入口。 */
-void APP_Chassis_TIM_1ms_RunForSeconds_PeriodElapsedCallback(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

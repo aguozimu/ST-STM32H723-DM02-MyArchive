@@ -10,7 +10,6 @@
 
 namespace
 {
-constexpr float FORWARD_SPEED_RPM = 50.0f;
 constexpr float FORWARD_DURATION_S = 1.0f;
 constexpr uint16_t ZDT_ACCELERATION = 10U;
 constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
@@ -64,9 +63,10 @@ extern "C" void Control_Task(void *argument)
     APP_Chassis.Enable();
 
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
-    APP_Chassis.RunForSeconds(30.0f,
-                              FORWARD_SPEED_RPM,
+    APP_Chassis.RunForSeconds(-30.0f,
+                              -50.0f,
                               0.0f,
-                              3.0f);
+                             20.0f);
+       //APP_Chassis.Disable();                       
     HoldTask();
 }

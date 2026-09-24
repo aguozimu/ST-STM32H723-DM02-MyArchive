@@ -232,7 +232,8 @@ void Class_BMI088::Init()
 {
     SPI_Manage_Object = &SPI2_Manage_Object;
 
-    BMI088_Accel.Init(true);
+    // 不要加热：IMU 加热器保持禁用
+    BMI088_Accel.Init(false);
     BMI088_Gyro.Init();
     Filter_VQF.Init(VQF_Config.Parameter,
                     VQF_Config.Gyro_D_T,

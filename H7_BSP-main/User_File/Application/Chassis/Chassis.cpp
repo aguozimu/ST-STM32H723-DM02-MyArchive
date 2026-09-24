@@ -8,6 +8,7 @@
 #include "Chassis.h"
 
 #include <cmath>
+#include "cmsis_os2.h"
 
 Class_Chassis APP_Chassis;
 
@@ -31,6 +32,29 @@ void Class_Chassis::Init(
                        motor_config[i].polarity < 0,
                        motor_config[i].pulses_per_revolution);
     }
+
+    ConfigurePeriodicFeedback();
+    initialized.store(true, std::memory_order_release);
+}
+
+void Class_Chassis::ConfigurePeriodicFeedback(uint16_t period_ms)
+{
+    for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
+    {
+        //motors[i].ConfigureSpeedFeedbackPeriod(period_ms);
+        motors[i].ConfigurePositionFeedbackPeriod(period_ms);
+    }
+}
+
+Struct_ZDTMotor_Feedback Class_Chassis::GetMotorFeedback(uint8_t motor_index) const
+{
+    if (!initialized.load(std::memory_order_acquire) ||
+        motor_index >= CHASSIS_WHEEL_COUNT)
+    {
+        return {};
+    }
+
+    return motors[motor_index].GetFeedback();
 }
 
 void Class_Chassis::Enable()
@@ -46,8 +70,6 @@ void Class_Chassis::Enable()
 
 void Class_Chassis::SetVelocity(float x, float y, float omega)
 {
-    CancelRunTimer();
-
     // 麦轮旋转项 R*omega，其中 R 为底盘半长与半宽之和。
     const float rotation = (config.half_length + config.half_width) * omega;
 
@@ -81,47 +103,18 @@ void Class_Chassis::RunForSeconds(float x,
         return;
     }
 
-    const double duration_ms_float = static_cast<double>(duration_s) * 1000.0;
-    uint32_t duration_ms = UINT32_MAX;
-    if (duration_ms_float < static_cast<double>(UINT32_MAX))
-    {
-        duration_ms = static_cast<uint32_t>(duration_ms_float);
-        if (static_cast<double>(duration_ms) < duration_ms_float)
-        {
-            ++duration_ms;
-        }
-        if (duration_ms == 0U)
-        {
-            duration_ms = 1U;
-        }
-    }
-
-    // SetVelocity() 会先取消旧倒计时，随后用新的时长开始毫秒倒计时。
     SetVelocity(x, y, omega);
-    run_remaining_ms.store(duration_ms, std::memory_order_release);
-}
-
-void Class_Chassis::TIM_1ms_RunForSeconds_PeriodElapsedCallback()
-{
-    uint32_t remaining_ms = run_remaining_ms.load(std::memory_order_acquire);
-    while (remaining_ms > 0U)
-    {
-        if (run_remaining_ms.compare_exchange_weak(remaining_ms,
-                                                   remaining_ms - 1U,
-                                                   std::memory_order_acq_rel,
-                                                   std::memory_order_acquire))
-        {
-            if (remaining_ms == 1U)
-            {
-                Stop();
-            }
-            return;
-        }
-    }
+    osDelay(static_cast<uint32_t>(duration_s * 1000.0f));
+    Stop();
 }
 
 void Class_Chassis::Process()
 {
+    if (!initialized.load(std::memory_order_acquire))
+    {
+        return;
+    }
+
     // ZDTmotor 在 Process() 中维护运动应答超时与在线状态。
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
@@ -131,8 +124,6 @@ void Class_Chassis::Process()
 
 void Class_Chassis::Stop()
 {
-    CancelRunTimer();
-
     // 先缓存四条停止命令，再通过一次广播让四轮同时停止。
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
@@ -143,22 +134,10 @@ void Class_Chassis::Stop()
 
 void Class_Chassis::Disable()
 {
-    CancelRunTimer();
-
     // 先缓存四条失能命令，再通过一次广播让四轮同时失能。
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
         motors[i].Disable(true);
     }
     motors[Chassis_Wheel_LeftFront].TriggerSynchronousMotion();
-}
-
-void Class_Chassis::CancelRunTimer()
-{
-    run_remaining_ms.store(0U, std::memory_order_release);
-}
-
-extern "C" void APP_Chassis_TIM_1ms_RunForSeconds_PeriodElapsedCallback(void)
-{
-    APP_Chassis.TIM_1ms_RunForSeconds_PeriodElapsedCallback();
 }

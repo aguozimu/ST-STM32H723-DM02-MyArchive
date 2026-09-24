@@ -216,6 +216,10 @@ public:
      * @param period_ms 0~65535 ms；0 表示停止该功能码的定时返回。
      */
     bool ConfigurePeriodicFeedback(uint8_t function, uint16_t period_ms);
+    /** @brief 配置 0x35 实时转速周期返回；period_ms 为 0 时停止返回。 */
+    bool ConfigureSpeedFeedbackPeriod(uint16_t period_ms = 10U);
+    /** @brief 配置 0x36 实时位置周期返回；period_ms 为 0 时停止返回。 */
+    bool ConfigurePositionFeedbackPeriod(uint16_t period_ms = 10U);
 
     /** @brief 周期维护接收确认超时和在线状态，建议在任务中定期调用。 */
     void Process();

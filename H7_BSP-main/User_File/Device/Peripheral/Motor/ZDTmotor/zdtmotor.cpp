@@ -580,6 +580,18 @@ bool Class_ZDTMotor::ConfigurePeriodicFeedback(uint8_t function,
     return SubmitCommand(address, 0x11U, body, sizeof(body), false);
 }
 
+/** @brief 手册 5.5.1/5.5.11：配置实时转速周期返回，默认 10 ms。 */
+bool Class_ZDTMotor::ConfigureSpeedFeedbackPeriod(uint16_t period_ms)
+{
+    return ConfigurePeriodicFeedback(0x35U, period_ms);
+}
+
+/** @brief 手册 5.5.1/5.5.13：配置实时位置周期返回，默认 10 ms。 */
+bool Class_ZDTMotor::ConfigurePositionFeedbackPeriod(uint16_t period_ms)
+{
+    return ConfigurePeriodicFeedback(0x36U, period_ms);
+}
+
 /** @brief 按 Init() 的 reverse 配置将协议方向映射到应用层方向。 */
 float Class_ZDTMotor::ApplyDirection(float value) const
 {

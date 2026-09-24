@@ -92,13 +92,12 @@ chassis.Disable();
 | `Init()` | 保存配置并调用四次 `Class_ZDTMotor::Init()` |
 | `Enable()` | 缓存四台电机的使能命令，然后广播同步触发 |
 | `SetVelocity()` | 计算四轮速度，调用 `SetSpeed()`，然后广播同步触发 |
-| `RunForSeconds()` | 发送速度并设置毫秒倒计时，立即返回；倒计时结束后同步停止 |
-| `TIM_1ms_RunForSeconds_PeriodElapsedCallback()` | 由 `TIM_1ms_Task` 每 1 ms 调用，维护定时运行倒计时 |
+| `RunForSeconds()` | 发送速度并用 `osDelay()` 阻塞当前任务，延时结束后同步停止 |
 | `Process()` | 调用四台 ZDT 电机的 `Process()`，维护应答超时和在线状态 |
 | `Stop()` | 缓存四台电机的停止命令，然后广播同步触发 |
 | `Disable()` | 缓存四台电机的失能命令，然后广播同步触发 |
 
-`RunForSeconds()` 的 `duration_s` 小于等于零或不是有效正数时不会启动运动，而是立即同步停止。时长小于 1 ms 时按 1 ms 运行，不能整除到毫秒的时长向上取整；直接调用 `SetVelocity()`、`Stop()` 或 `Disable()` 会取消尚未结束的定时运行倒计时。
+`RunForSeconds()` 的 `duration_s` 小于等于零或不是有效正数时不会启动运动，而是立即同步停止。调用后当前任务会阻塞到指定时间结束，然后同步停止四台电机。
 
 ## 当前 Control_Task
 
@@ -109,7 +108,7 @@ chassis.Disable();
 - 1、3 号电机使用正极性，2、4 号电机使用反极性；
 - 等待 200 ms；
 - 调用 `RunForSeconds(0, 50, 0, 1.0f)`，以 50 RPM 向前运行 1 s；
-- `RunForSeconds()` 设置倒计时后立即返回，由 `TIM_1ms_Task` 在倒计时结束时同步停止四台电机；
+- `RunForSeconds()` 阻塞当前任务，延时结束后同步停止四台电机；
 - 任务进入永久等待。
 
 ZDT 固件、校验、反馈和命令格式见 [`../../Device/Peripheral/Motor/ZDTmotor/zdtmotor.md`](../../Device/Peripheral/Motor/ZDTmotor/zdtmotor.md)。
