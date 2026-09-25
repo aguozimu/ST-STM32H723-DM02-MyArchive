@@ -40,8 +40,10 @@ enum Enum_Chassis_Wheel : uint8_t
  */
 struct Struct_Chassis_Config
 {
-    float half_length = 0.15f; //!< 底盘中心到前/后轮轴的距离，通常单位 m。
-    float half_width = 0.15f;  //!< 底盘中心到左/右轮的距离，通常单位 m。
+    float half_length = 0.15f;    //!< 底盘中心到前/后轮轴的距离，单位 m。
+    float half_width = 0.15f;     //!< 底盘中心到左/右轮的距离，单位 m。
+    float wheel_radius_m = 0.05f; //!< 麦轮有效滚动半径，单位 m。
+    float gear_ratio = 1.0f;      //!< 电机转数 / 车轮转数，直驱为 1。
 };
 
 /**
@@ -55,7 +57,7 @@ struct Struct_Chassis_Motor_Config
     FDCAN_HandleTypeDef *hfdcan = nullptr; //!< 电机所在的 FDCAN 外设。
     uint8_t can_id = 0U;                  //!< ZDT 节点地址，地址 0 用于广播。
     int8_t polarity = 1;                  //!< 电机极性：+1 正向，-1 反向。
-    float speed_to_motor = 1.0f;          //!< 麦轮解算速度到电机 RPM 的换算系数。
+    float speed_to_motor = 1.0f;          //!< Init() 自动计算的 m/s 到电机 RPM 系数。
     Enum_ZDTMotor_Firmware firmware = Enum_ZDTMotor_Firmware::EMM; //!< ZDT 固件协议。
     Enum_ZDTMotor_Checksum checksum = Enum_ZDTMotor_Checksum::FIXED_6B; //!< 校验方式。
     uint32_t pulses_per_revolution = 3200U; //!< EMM 固件每圈脉冲数。
@@ -98,6 +100,24 @@ public:
      * 本接口使用 osDelay() 阻塞当前任务，延时结束后同步停止四台电机。
      */
     void RunForSeconds(float x, float y, float omega, float duration_s);
+
+    /**
+     * @brief 最简单的阻塞式位置移动。
+     * @param target_x_m 目标 x 坐标，单位 m，与 Struct_INS_Pose.x_m 一致。
+     * @param target_y_m 目标 y 坐标，单位 m，与 Struct_INS_Pose.y_m 一致。
+     * @param tolerance_m 到位阈值，单位 m。
+     * @param target_yaw_rad 目标 yaw，单位 rad，与 Struct_INS_Pose.yaw_rad 一致。
+     * @param yaw_tolerance_rad yaw 到位阈值，单位 rad。
+     *
+     * 循环读取 APP_INS.GetComplementaryPosition()，把目标与实时位置的差值
+     * 直接作为 SetVelocity() 的 x/y 输入，把 yaw 差值直接作为 omega 输入。
+     * 每个循环使用 osDelay(100) 等待，不包含 PID、坐标旋转和加减速处理。
+     */
+    bool RunToPosition(float target_x_m,
+                       float target_y_m,
+                       float tolerance_m,
+                       float target_yaw_rad = 0.0f,
+                       float yaw_tolerance_rad = 0.05f);
 
     /** 周期调用四台 ZDT 电机的 Process()，维护底层应答和在线状态。 */
     void Process();

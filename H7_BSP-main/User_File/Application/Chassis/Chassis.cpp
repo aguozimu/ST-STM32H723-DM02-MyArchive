@@ -7,10 +7,18 @@
 
 #include "Chassis.h"
 
+#include "INS.h"
+
 #include <cmath>
 #include "cmsis_os2.h"
 
 Class_Chassis APP_Chassis;
+
+namespace
+{
+constexpr float CHASSIS_PI_F = 3.14159265358979f;
+constexpr uint32_t POSITION_CONTROL_PERIOD_MS = 100U;
+} // namespace
 
 void Class_Chassis::Init(
     const Struct_Chassis_Config &new_config,
@@ -19,10 +27,20 @@ void Class_Chassis::Init(
     // 保存配置副本，后续 SetVelocity() 直接使用这些参数完成速度换算。
     config = new_config;
 
+    // m/s 到电机 RPM：v / (2*pi*r) * 60 * 减速比。
+    float speed_to_motor = 1.0f;
+    if (std::isfinite(config.wheel_radius_m) && (config.wheel_radius_m > 0.0f) &&
+        std::isfinite(config.gear_ratio) && (config.gear_ratio > 0.0f))
+    {
+        speed_to_motor =
+            config.gear_ratio * 60.0f / (2.0f * CHASSIS_PI_F * config.wheel_radius_m);
+    }
+
     // 数组下标与车轮枚举一一对应：左前、右前、左后、右后。
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
         motor_config[i] = new_motor_config[i];
+        motor_config[i].speed_to_motor = speed_to_motor;
 
         // ZDTmotor 使用 reverse 表示方向，这里将 +1/-1 极性转换为布尔值。
         motors[i].Init(motor_config[i].hfdcan,
@@ -106,6 +124,47 @@ void Class_Chassis::RunForSeconds(float x,
     SetVelocity(x, y, omega);
     osDelay(static_cast<uint32_t>(duration_s * 1000.0f));
     Stop();
+}
+
+bool Class_Chassis::RunToPosition(float target_x_m,
+                                  float target_y_m,
+                                  float tolerance_m,
+                                  float target_yaw_rad,
+                                  float yaw_tolerance_rad)
+{
+    if (!std::isfinite(target_x_m) || !std::isfinite(target_y_m) ||
+        !std::isfinite(tolerance_m) || (tolerance_m < 0.0f) ||
+        !std::isfinite(target_yaw_rad) || !std::isfinite(yaw_tolerance_rad) ||
+        (yaw_tolerance_rad < 0.0f))
+    {
+        Stop();
+        return false;
+    }
+
+    for (;;)
+    {
+        const Struct_INS_Pose current_position = APP_INS.GetComplementaryPosition();
+        if (!current_position.valid || !std::isfinite(current_position.x_m) ||
+            !std::isfinite(current_position.y_m) ||
+            !std::isfinite(current_position.yaw_rad))
+        {
+            Stop();
+            return false;
+        }
+
+        const float error_x_m = target_x_m - current_position.x_m;
+        const float error_y_m = target_y_m - current_position.y_m;
+        const float error_yaw_rad = target_yaw_rad - current_position.yaw_rad;
+        if ((error_x_m * error_x_m + error_y_m * error_y_m <= tolerance_m * tolerance_m) &&
+            (std::fabs(error_yaw_rad) <= yaw_tolerance_rad))
+        {
+            Stop();
+            return true;
+        }
+
+        SetVelocity(error_x_m, error_y_m, error_yaw_rad);
+        osDelay(POSITION_CONTROL_PERIOD_MS);
+    }
 }
 
 void Class_Chassis::Process()
