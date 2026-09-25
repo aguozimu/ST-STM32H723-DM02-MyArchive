@@ -18,6 +18,17 @@ namespace
 {
 constexpr float CHASSIS_PI_F = 3.14159265358979f;
 constexpr uint32_t POSITION_CONTROL_PERIOD_MS = 100U;
+
+float NormalizeAngle(float angle_rad)
+{
+    constexpr float two_pi = 2.0f * CHASSIS_PI_F;
+    angle_rad = std::fmod(angle_rad + CHASSIS_PI_F, two_pi);
+    if (angle_rad < 0.0f)
+    {
+        angle_rad += two_pi;
+    }
+    return angle_rad - CHASSIS_PI_F;
+}
 } // namespace
 
 void Class_Chassis::Init(
@@ -154,7 +165,8 @@ bool Class_Chassis::RunToPosition(float target_x_m,
 
         const float error_x_m = target_x_m - current_position.x_m;
         const float error_y_m = target_y_m - current_position.y_m;
-        const float error_yaw_rad = target_yaw_rad - current_position.yaw_rad;
+        const float error_yaw_rad =
+            NormalizeAngle(target_yaw_rad - current_position.yaw_rad);
         if ((error_x_m * error_x_m + error_y_m * error_y_m <= tolerance_m * tolerance_m) &&
             (std::fabs(error_yaw_rad) <= yaw_tolerance_rad))
         {
@@ -162,7 +174,11 @@ bool Class_Chassis::RunToPosition(float target_x_m,
             return true;
         }
 
-        SetVelocity(error_x_m, error_y_m, error_yaw_rad);
+        const float cos_yaw = std::cos(current_position.yaw_rad);
+        const float sin_yaw = std::sin(current_position.yaw_rad);
+        const float body_error_x = cos_yaw * error_x_m + sin_yaw * error_y_m;
+        const float body_error_y = -sin_yaw * error_x_m + cos_yaw * error_y_m;
+        SetVelocity(body_error_x, body_error_y, error_yaw_rad);
         osDelay(POSITION_CONTROL_PERIOD_MS);
     }
 }
@@ -188,8 +204,12 @@ bool Class_Chassis::RunToRelativePosition(float relative_x_m,
         return false;
     }
 
-    const float target_x_m = origin_position.x_m + relative_x_m;
-    const float target_y_m = origin_position.y_m + relative_y_m;
+    const float cos_origin = std::cos(origin_position.yaw_rad);
+    const float sin_origin = std::sin(origin_position.yaw_rad);
+    const float target_x_m =
+        origin_position.x_m + cos_origin * relative_x_m - sin_origin * relative_y_m;
+    const float target_y_m =
+        origin_position.y_m + sin_origin * relative_x_m + cos_origin * relative_y_m;
     const float target_yaw_rad = origin_position.yaw_rad + relative_yaw_rad;
     if (!std::isfinite(target_x_m) || !std::isfinite(target_y_m) ||
         !std::isfinite(target_yaw_rad))
@@ -211,7 +231,8 @@ bool Class_Chassis::RunToRelativePosition(float relative_x_m,
 
         const float error_x_m = target_x_m - current_position.x_m;
         const float error_y_m = target_y_m - current_position.y_m;
-        const float error_yaw_rad = target_yaw_rad - current_position.yaw_rad;
+        const float error_yaw_rad =
+            NormalizeAngle(target_yaw_rad - current_position.yaw_rad);
         if ((error_x_m * error_x_m + error_y_m * error_y_m <= tolerance_m * tolerance_m) &&
             (std::fabs(error_yaw_rad) <= yaw_tolerance_rad))
         {
@@ -219,7 +240,11 @@ bool Class_Chassis::RunToRelativePosition(float relative_x_m,
             return true;
         }
 
-        SetVelocity(error_x_m, error_y_m, error_yaw_rad);
+        const float cos_yaw = std::cos(current_position.yaw_rad);
+        const float sin_yaw = std::sin(current_position.yaw_rad);
+        const float body_error_x = cos_yaw * error_x_m + sin_yaw * error_y_m;
+        const float body_error_y = -sin_yaw * error_x_m + cos_yaw * error_y_m;
+        SetVelocity(body_error_x, body_error_y, error_yaw_rad);
         osDelay(POSITION_CONTROL_PERIOD_MS);
     }
 }

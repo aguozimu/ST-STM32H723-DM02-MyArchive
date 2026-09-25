@@ -74,16 +74,58 @@ extern "C" void Control_Task(void *argument)
     APP_Chassis.Enable();
 
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
+    APP_Chassis.RunToRelativePosition(-0.9f,
+                              0.0f,
+                              0.01f,
+                              0.0f,
+                              0.05f);
+
     APP_Chassis.RunToRelativePosition(0.0f,
+                              -0.95f,
+                              0.01f,
+                              PI/2.0f,
+                              0.05f);
+    // APP_Chassis.RunToRelativePosition(0.0f,
+    //                           0.0f,
+    //                           0.01f,
+    //                           PI/2.0f,
+    //                           0.03f);                          
+    APP_Chassis.RunToRelativePosition(0.0f,
+                              1.2f,
+                              0.01f,
+                              0.0f,
+                              0.05f);  
+        // APP_Chassis.RunToRelativePosition(0.0f,
+        //                       0.0f,
+        //                       0.01f,
+        //                       -(PI/2.0f),
+        //                       0.05f);                           
+                              
+                              
+       APP_Chassis.RunToRelativePosition(-1.2f,
+                              0.0f,
+                              0.01f,
+                              -PI/2.0f,
+                              0.05f); 
+
+       APP_Chassis.RunToRelativePosition(-1.45f,
+                              0.0f,
+                              0.01f,
+                              0.0f,
+                              0.05f); 
+       APP_Chassis.RunToRelativePosition(0.0f,
                               0.8f,
                               0.01f,
                               0.0f,
-                              0.05f);
-    APP_Chassis.RunToRelativePosition(-1.0f,
-                              0.0f,
+                              0.05f); 
+
+       APP_Chassis.RunToRelativePosition(0.0f,
+                              3.0f,
                               0.01f,
                               0.0f,
-                              0.05f);
+                              0.05f); 
+
+    //GOHome   
     APP_Chassis.RunToPosition(0.0f,
                               0.0f,
                               0.01f,
@@ -91,5 +133,6 @@ extern "C" void Control_Task(void *argument)
                               0.05f);                          
 
     //APP_Chassis.Disable();
+     APP_Chassis.Stop();
     HoldTask();
 }
