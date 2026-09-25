@@ -167,6 +167,63 @@ bool Class_Chassis::RunToPosition(float target_x_m,
     }
 }
 
+bool Class_Chassis::RunToRelativePosition(float relative_x_m,
+                                          float relative_y_m,
+                                          float tolerance_m,
+                                          float relative_yaw_rad,
+                                          float yaw_tolerance_rad)
+{
+    // 只在进入函数时读取一次当前位置，作为整个相对移动的固定原点。
+    const Struct_INS_Pose origin_position = APP_INS.GetComplementaryPosition();
+
+    if (!std::isfinite(relative_x_m) || !std::isfinite(relative_y_m) ||
+        !std::isfinite(tolerance_m) || (tolerance_m < 0.0f) ||
+        !std::isfinite(relative_yaw_rad) || !std::isfinite(yaw_tolerance_rad) ||
+        (yaw_tolerance_rad < 0.0f) ||
+        !origin_position.valid || !std::isfinite(origin_position.x_m) ||
+        !std::isfinite(origin_position.y_m) ||
+        !std::isfinite(origin_position.yaw_rad))
+    {
+        Stop();
+        return false;
+    }
+
+    const float target_x_m = origin_position.x_m + relative_x_m;
+    const float target_y_m = origin_position.y_m + relative_y_m;
+    const float target_yaw_rad = origin_position.yaw_rad + relative_yaw_rad;
+    if (!std::isfinite(target_x_m) || !std::isfinite(target_y_m) ||
+        !std::isfinite(target_yaw_rad))
+    {
+        Stop();
+        return false;
+    }
+
+    for (;;)
+    {
+        const Struct_INS_Pose current_position = APP_INS.GetComplementaryPosition();
+        if (!current_position.valid || !std::isfinite(current_position.x_m) ||
+            !std::isfinite(current_position.y_m) ||
+            !std::isfinite(current_position.yaw_rad))
+        {
+            Stop();
+            return false;
+        }
+
+        const float error_x_m = target_x_m - current_position.x_m;
+        const float error_y_m = target_y_m - current_position.y_m;
+        const float error_yaw_rad = target_yaw_rad - current_position.yaw_rad;
+        if ((error_x_m * error_x_m + error_y_m * error_y_m <= tolerance_m * tolerance_m) &&
+            (std::fabs(error_yaw_rad) <= yaw_tolerance_rad))
+        {
+            Stop();
+            return true;
+        }
+
+        SetVelocity(error_x_m, error_y_m, error_yaw_rad);
+        osDelay(POSITION_CONTROL_PERIOD_MS);
+    }
+}
+
 void Class_Chassis::Process()
 {
     if (!initialized.load(std::memory_order_acquire))

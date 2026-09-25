@@ -74,8 +74,13 @@ extern "C" void Control_Task(void *argument)
     APP_Chassis.Enable();
 
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
-    APP_Chassis.RunToPosition(0.3f,
-                              0.6f,
+    APP_Chassis.RunToRelativePosition(0.0f,
+                              0.8f,
+                              0.01f,
+                              0.0f,
+                              0.05f);
+    APP_Chassis.RunToRelativePosition(-1.0f,
+                              0.0f,
                               0.01f,
                               0.0f,
                               0.05f);
@@ -83,7 +88,7 @@ extern "C" void Control_Task(void *argument)
                               0.0f,
                               0.01f,
                               0.0f,
-                              0.05f);
+                              0.05f);                          
 
     //APP_Chassis.Disable();
     HoldTask();

@@ -119,6 +119,24 @@ public:
                        float target_yaw_rad = 0.0f,
                        float yaw_tolerance_rad = 0.05f);
 
+    /**
+     * @brief 从函数开始时的当前位置出发，相对移动指定距离。
+     * @param relative_x_m 相对目标 x 位移，单位 m，向右为正。
+     * @param relative_y_m 相对目标 y 位移，单位 m，向前为正。
+     * @param tolerance_m 到位阈值，单位 m。
+     * @param relative_yaw_rad 相对目标 yaw，单位 rad，逆时针为正。
+     * @param yaw_tolerance_rad yaw 到位阈值，单位 rad。
+     *
+     * 函数开始时读取一次 APP_INS.GetComplementaryPosition() 作为原点，
+     * 将原点坐标与相对位移相加得到目标坐标。后续控制流程与
+     * RunToPosition() 相同，使用世界系误差直接调用 SetVelocity()。
+     */
+    bool RunToRelativePosition(float relative_x_m,
+                               float relative_y_m,
+                               float tolerance_m,
+                               float relative_yaw_rad = 0.0f,
+                               float yaw_tolerance_rad = 0.05f);
+
     /** 周期调用四台 ZDT 电机的 Process()，维护底层应答和在线状态。 */
     void Process();
 

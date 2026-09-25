@@ -92,6 +92,9 @@ chassis.RunForSeconds(0.0f, 0.10f, 0.0f, 1.0f);
 // 阻塞移动到坐标 (0, 0.10) m、yaw = 0，位置和 yaw 到位阈值分别为 0.01 m、0.05 rad。
 chassis.RunToPosition(0.0f, 0.10f, 0.01f, 0.0f, 0.05f);
 
+// 以调用时的位置为原点，相对移动 (+0.10, +0.10) m，并保持相对 yaw 不变。
+chassis.RunToRelativePosition(0.10f, 0.10f, 0.01f, 0.0f, 0.05f);
+
 chassis.Stop();
 chassis.Disable();
 ```
@@ -105,6 +108,7 @@ chassis.Disable();
 | `SetVelocity()` | 计算四轮速度，调用 `SetSpeed()`，然后广播同步触发 |
 | `RunForSeconds()` | 发送速度并用 `osDelay()` 阻塞当前任务，延时结束后同步停止 |
 | `RunToPosition()` | 比较实时位置和 yaw，直接调用 `SetVelocity(error_x, error_y, error_yaw)` |
+| `RunToRelativePosition()` | 用函数开始时的位姿建立原点，将相对位移换算为绝对目标后阻塞移动 |
 | `Process()` | 调用四台 ZDT 电机的 `Process()`，维护应答超时和在线状态 |
 | `Stop()` | 缓存四台电机的停止命令，然后广播同步触发 |
 | `Disable()` | 缓存四台电机的失能命令，然后广播同步触发 |
@@ -135,6 +139,27 @@ osDelay(100)
 ```
 
 `error_x/error_y` 的单位是 m，按 `1 m -> 1 m/s` 直接作为 `SetVelocity()` 的 `x/y` 输入；`error_yaw_rad` 按 `1 rad -> 1 rad/s` 直接作为 `omega` 输入。`SetVelocity()` 再用轮径和减速比完成线速度到 RPM 换算。没有 PID、坐标旋转、速度斜坡或加减速控制。
+
+### 相对位置移动
+
+```cpp
+bool RunToRelativePosition(float relative_x_m,
+                           float relative_y_m,
+                           float tolerance_m,
+                           float relative_yaw_rad = 0.0f,
+                           float yaw_tolerance_rad = 0.05f);
+```
+
+函数进入时只读取一次 `APP_INS.GetComplementaryPosition()`，并保存为本次移动的原点：
+
+```text
+origin = APP_INS.GetComplementaryPosition()
+target_x_m = origin.x_m + relative_x_m
+target_y_m = origin.y_m + relative_y_m
+target_yaw_rad = origin.yaw_rad + relative_yaw_rad
+```
+
+随后按照 `RunToPosition()` 的流程循环比较实时位姿和目标位姿。原点在循环中不会更新，因此 `relative_x_m`、`relative_y_m` 和 `relative_yaw_rad` 均相对于函数开始时的车体位姿。
 
 ## 当前 Control_Task
 
