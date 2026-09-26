@@ -13,8 +13,8 @@ namespace
 {
 constexpr uint16_t ZDT_ACCELERATION = 10U;
 constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
-constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 2000U;
-constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 200U;
+constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 1000U;
+constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 1000U;
 constexpr float CHASSIS_WHEEL_RADIUS_M = 0.05f;
 constexpr float CHASSIS_GEAR_RATIO = 1.0f;
 
@@ -72,16 +72,16 @@ extern "C" void Control_Task(void *argument)
     osDelay(ZDT_BOOT_DELAY_TICKS);
     InitChassis();
     APP_Chassis.Enable();
-
+     APP_Chassis.Stop();
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
-    APP_Chassis.RunToRelativePosition(-0.9f,
+    APP_Chassis.RunToRelativePosition(-0.95f,
                               0.0f,
                               0.01f,
                               0.0f,
                               0.05f);
 
     APP_Chassis.RunToRelativePosition(0.0f,
-                              -0.95f,
+                              -0.94f,
                               0.01f,
                               0.0f,
                               0.05f);
@@ -90,10 +90,10 @@ extern "C" void Control_Task(void *argument)
                               0.0f,
                               0.01f,
                               PI/2.0f,
-                              0.05f);                              
+                              0.01f);                              
                               
     APP_Chassis.RunToRelativePosition(0.0f,
-                              1.2f,
+                              1.25f,
                               0.01f,
                               0.0f,
                               0.05f);  
@@ -103,13 +103,13 @@ extern "C" void Control_Task(void *argument)
                               0.0f,
                               0.01f,
                               -PI/2.0f,
-                              0.05f); 
+                              0.01f); 
        APP_Chassis.RunToRelativePosition(0.0f,
                               -1.2f,
                               0.01f,
                               0.0f,
                               0.05f); 
-       APP_Chassis.RunToRelativePosition(-1.45f,
+       APP_Chassis.RunToRelativePosition(-1.40f,
                               0.0f,
                               0.01f,
                               0.0f,
@@ -121,11 +121,25 @@ extern "C" void Control_Task(void *argument)
                               0.05f); 
 
        APP_Chassis.RunToRelativePosition(0.0f,
-                              3.0f,
+                              3.2f,
                               0.01f,
                               0.0f,
                               0.05f); 
-
+       APP_Chassis.RunToRelativePosition(1.5f,
+                              0.0f,
+                              0.01f,
+                              0.0f,
+                              0.05f);     
+    //    APP_Chassis.RunToRelativePosition(2.0f,
+    //                           0.0f,
+    //                           0.01f,
+    //                           0.0f,
+    //                           0.05f);                                                          
+    APP_Chassis.RunToPosition(0.0f,
+                              2.1f,
+                              0.01f,
+                              0.0f,
+                              0.05f);    
     //GOHome   
     APP_Chassis.RunToPosition(0.0f,
                               0.0f,
