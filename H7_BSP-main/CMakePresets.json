@@ -8,8 +8,8 @@
             "binaryDir": "${sourceDir}/build/${presetName}",
 		    "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
             "cacheVariables": {
-                "ARM_TOOLCHAIN_DIR": "C:/ST/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin",
-                "CMAKE_MAKE_PROGRAM": "C:/ST/STM32CubeCLT_1.18.0/Ninja/bin/ninja.exe"
+                "ARM_TOOLCHAIN_DIR": "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin",
+                "CMAKE_MAKE_PROGRAM": "E:/CubeCLT/STM32CubeCLT_1.22.0/Ninja/bin/ninja.exe"
             }
         },
         {

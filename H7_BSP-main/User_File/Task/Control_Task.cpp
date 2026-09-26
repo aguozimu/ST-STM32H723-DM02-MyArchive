@@ -83,31 +83,32 @@ extern "C" void Control_Task(void *argument)
     APP_Chassis.RunToRelativePosition(0.0f,
                               -0.95f,
                               0.01f,
-                              PI/2.0f,
+                              0.0f,
                               0.05f);
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                           0.0f,
-    //                           0.01f,
-    //                           PI/2.0f,
-    //                           0.03f);                          
+    
+     APP_Chassis.RunToRelativePosition(0.0f,
+                              0.0f,
+                              0.01f,
+                              PI/2.0f,
+                              0.05f);                              
+                              
     APP_Chassis.RunToRelativePosition(0.0f,
                               1.2f,
                               0.01f,
                               0.0f,
                               0.05f);  
-        // APP_Chassis.RunToRelativePosition(0.0f,
-        //                       0.0f,
-        //                       0.01f,
-        //                       -(PI/2.0f),
-        //                       0.05f);                           
-                              
-                              
-       APP_Chassis.RunToRelativePosition(-1.2f,
+                         
+                                                     
+       APP_Chassis.RunToRelativePosition(0.0f,
                               0.0f,
                               0.01f,
                               -PI/2.0f,
                               0.05f); 
-
+       APP_Chassis.RunToRelativePosition(0.0f,
+                              -1.2f,
+                              0.01f,
+                              0.0f,
+                              0.05f); 
        APP_Chassis.RunToRelativePosition(-1.45f,
                               0.0f,
                               0.01f,
