@@ -7,7 +7,7 @@ set(CMAKE_CXX_COMPILER_ID GNU)
 # GNU Tools for STM32 installation. It can still be overridden from the
 # command line with -DARM_TOOLCHAIN_DIR=<path>.
 set(ARM_TOOLCHAIN_DIR
-    "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin"
+    "C:/ST/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin"
     CACHE PATH "GNU Arm Embedded toolchain binary directory")
 set(TOOLCHAIN_PREFIX                arm-none-eabi-)
 

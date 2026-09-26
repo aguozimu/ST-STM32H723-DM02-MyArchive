@@ -18,6 +18,19 @@ namespace
 {
 constexpr float CHASSIS_PI_F = 3.14159265358979f;
 constexpr uint32_t POSITION_CONTROL_PERIOD_MS = 100U;
+/** Class_PID 的 D_T 必须与控制周期一致，否则微分项按错误时间尺度放大。 */
+constexpr float POSITION_CONTROL_PERIOD_S =
+    static_cast<float>(POSITION_CONTROL_PERIOD_MS) / 1000.0f;
+/** 平移 Kp，1.0 与旧纯 P 的误差即速度行为一致。 */
+constexpr float POSITION_PID_KP = 1.0f;
+/** 航向 Kp。 */
+constexpr float POSITION_PID_KP_YAW = 1.0f;
+/** 三轴 Kd 起步值，对测量速度做阻尼；实机过冲加大、发抖减小。 */
+constexpr float POSITION_PID_KD = 0.02f;
+/** 平移输出限幅 m/s，替代纯 P 时代误差直接当速度的地板油。 */
+constexpr float POSITION_PID_OUT_MAX_XY = 0.5f;
+/** 航向输出限幅 rad/s。 */
+constexpr float POSITION_PID_OUT_MAX_YAW = 1.0f;
 
 float NormalizeAngle(float angle_rad)
 {
@@ -63,7 +76,43 @@ void Class_Chassis::Init(
     }
 
     ConfigurePeriodicFeedback();
+
+    // 位置环三轴 PD：微分先行对测量值微分，目标切换瞬间不产生微分毛刺。
+    // 参数与状态封装在 Class_PID 内部，这里只做一次性 Init。
+    position_pid_x.Init(POSITION_PID_KP, 0.0f, POSITION_PID_KD, 0.0f, 0.0f,
+                        POSITION_PID_OUT_MAX_XY, POSITION_CONTROL_PERIOD_S,
+                        0.0f, 0.0f, 0.0f, 0.0f, PID_D_First_ENABLE);
+    position_pid_y.Init(POSITION_PID_KP, 0.0f, POSITION_PID_KD, 0.0f, 0.0f,
+                        POSITION_PID_OUT_MAX_XY, POSITION_CONTROL_PERIOD_S,
+                        0.0f, 0.0f, 0.0f, 0.0f, PID_D_First_ENABLE);
+    position_pid_yaw.Init(POSITION_PID_KP_YAW, 0.0f, POSITION_PID_KD, 0.0f,
+                          0.0f, POSITION_PID_OUT_MAX_YAW, POSITION_CONTROL_PERIOD_S,
+                          0.0f, 0.0f, 0.0f, 0.0f, PID_D_First_ENABLE);
+
     initialized.store(true, std::memory_order_release);
+}
+
+void Class_Chassis::ResetPositionPidState(float x_m, float y_m, float yaw_rad)
+{
+    // 副作用：清零积分并让三轴 Pre_Now 落到当前位姿——空跑一拍目标=当前、
+    // 输出丢弃。不清的话第一拍微分会把位置当速度，出发瞬间输出毛刺。
+    position_pid_x.Set_Target(x_m);
+    position_pid_x.Set_Now(x_m);
+    position_pid_x.Set_Integral_Error(0.0f);
+    position_pid_x.TIM_Calculate_PeriodElapsedCallback();
+
+    position_pid_y.Set_Target(y_m);
+    position_pid_y.Set_Now(y_m);
+    position_pid_y.Set_Integral_Error(0.0f);
+    position_pid_y.TIM_Calculate_PeriodElapsedCallback();
+
+    position_pid_yaw.Set_Target(yaw_rad);
+    position_pid_yaw.Set_Now(yaw_rad);
+    position_pid_yaw.Set_Integral_Error(0.0f);
+    position_pid_yaw.TIM_Calculate_PeriodElapsedCallback();
+
+    yaw_pid_last_raw = yaw_rad;
+    yaw_pid_unwrapped = yaw_rad;
 }
 
 void Class_Chassis::ConfigurePeriodicFeedback(uint16_t period_ms)
@@ -152,6 +201,18 @@ bool Class_Chassis::RunToPosition(float target_x_m,
         return false;
     }
 
+    // 循环外预热三轴 PID：INS 未就绪时快速失败，就绪则清掉上一段的微分残留。
+    const Struct_INS_Pose start_position = APP_INS.GetComplementaryPosition();
+    if (!start_position.valid || !std::isfinite(start_position.x_m) ||
+        !std::isfinite(start_position.y_m) || !std::isfinite(start_position.yaw_rad))
+    {
+        Stop();
+        return false;
+    }
+    ResetPositionPidState(start_position.x_m,
+                          start_position.y_m,
+                          start_position.yaw_rad);
+
     for (;;)
     {
         const Struct_INS_Pose current_position = APP_INS.GetComplementaryPosition();
@@ -174,11 +235,33 @@ bool Class_Chassis::RunToPosition(float target_x_m,
             return true;
         }
 
+        // yaw 解缠：按短弧增量累积连续角，防止过 ±π 时微分项跳变 2π。
+        yaw_pid_unwrapped +=
+            NormalizeAngle(current_position.yaw_rad - yaw_pid_last_raw);
+        yaw_pid_last_raw = current_position.yaw_rad;
+
+        // 三轴 PD：x/y 在世界系算，目标固定；微分先行使 D 项只反映实测速度。
+        position_pid_x.Set_Target(target_x_m);
+        position_pid_x.Set_Now(current_position.x_m);
+        position_pid_x.TIM_Calculate_PeriodElapsedCallback();
+
+        position_pid_y.Set_Target(target_y_m);
+        position_pid_y.Set_Now(current_position.y_m);
+        position_pid_y.TIM_Calculate_PeriodElapsedCallback();
+
+        // yaw 目标随解缠角平移，PID 内部 Target-Now 恒等于短弧误差。
+        position_pid_yaw.Set_Now(yaw_pid_unwrapped);
+        position_pid_yaw.Set_Target(yaw_pid_unwrapped + error_yaw_rad);
+        position_pid_yaw.TIM_Calculate_PeriodElapsedCallback();
+
+        // 世界系速度指令旋转到车体系后下发，与旧纯 P 的旋转方式一致。
         const float cos_yaw = std::cos(current_position.yaw_rad);
         const float sin_yaw = std::sin(current_position.yaw_rad);
-        const float body_error_x = cos_yaw * error_x_m + sin_yaw * error_y_m;
-        const float body_error_y = -sin_yaw * error_x_m + cos_yaw * error_y_m;
-        SetVelocity(body_error_x, body_error_y, error_yaw_rad);
+        const float out_x = position_pid_x.Get_Out();
+        const float out_y = position_pid_y.Get_Out();
+        const float body_vx = cos_yaw * out_x + sin_yaw * out_y;
+        const float body_vy = -sin_yaw * out_x + cos_yaw * out_y;
+        SetVelocity(body_vx, body_vy, position_pid_yaw.Get_Out());
         osDelay(POSITION_CONTROL_PERIOD_MS);
     }
 }
@@ -218,35 +301,12 @@ bool Class_Chassis::RunToRelativePosition(float relative_x_m,
         return false;
     }
 
-    for (;;)
-    {
-        const Struct_INS_Pose current_position = APP_INS.GetComplementaryPosition();
-        if (!current_position.valid || !std::isfinite(current_position.x_m) ||
-            !std::isfinite(current_position.y_m) ||
-            !std::isfinite(current_position.yaw_rad))
-        {
-            Stop();
-            return false;
-        }
-
-        const float error_x_m = target_x_m - current_position.x_m;
-        const float error_y_m = target_y_m - current_position.y_m;
-        const float error_yaw_rad =
-            NormalizeAngle(target_yaw_rad - current_position.yaw_rad);
-        if ((error_x_m * error_x_m + error_y_m * error_y_m <= tolerance_m * tolerance_m) &&
-            (std::fabs(error_yaw_rad) <= yaw_tolerance_rad))
-        {
-            Stop();
-            return true;
-        }
-
-        const float cos_yaw = std::cos(current_position.yaw_rad);
-        const float sin_yaw = std::sin(current_position.yaw_rad);
-        const float body_error_x = cos_yaw * error_x_m + sin_yaw * error_y_m;
-        const float body_error_y = -sin_yaw * error_x_m + cos_yaw * error_y_m;
-        SetVelocity(body_error_x, body_error_y, error_yaw_rad);
-        osDelay(POSITION_CONTROL_PERIOD_MS);
-    }
+    // 相对目标换算成世界系绝对目标后直接转发，控制环与 PD 参数只维护一份。
+    return RunToPosition(target_x_m,
+                         target_y_m,
+                         tolerance_m,
+                         target_yaw_rad,
+                         yaw_tolerance_rad);
 }
 
 void Class_Chassis::Process()

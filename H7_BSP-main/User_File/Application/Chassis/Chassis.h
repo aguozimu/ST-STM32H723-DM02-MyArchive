@@ -9,6 +9,7 @@
 #ifndef USER_FILE_APPLICATION_CHASSIS_CHASSIS_H
 #define USER_FILE_APPLICATION_CHASSIS_CHASSIS_H
 
+#include "alg_pid.h"
 #include "zdtmotor.h"
 
 #include <atomic>
@@ -109,9 +110,9 @@ public:
      * @param target_yaw_rad 目标 yaw，单位 rad，与 Struct_INS_Pose.yaw_rad 一致。
      * @param yaw_tolerance_rad yaw 到位阈值，单位 rad。
      *
-     * 循环读取 APP_INS.GetComplementaryPosition()，把目标与实时位置的差值
-     * 直接作为 SetVelocity() 的 x/y 输入，把 yaw 差值直接作为 omega 输入。
-     * 每个循环使用 osDelay(100) 等待，不包含 PID、坐标旋转和加减速处理。
+     * 循环读取 APP_INS.GetComplementaryPosition()，x/y/yaw 三轴误差分别经
+     * Class_PID 做 PD（微分先行、带输出限幅）得到世界系速度，再旋转到车体系
+     * 作为 SetVelocity() 输入。每个循环使用 osDelay(100) 等待，不做加减速规划。
      */
     bool RunToPosition(float target_x_m,
                        float target_y_m,
@@ -128,8 +129,8 @@ public:
      * @param yaw_tolerance_rad yaw 到位阈值，单位 rad。
      *
      * 函数开始时读取一次 APP_INS.GetComplementaryPosition() 作为原点，
-     * 将原点坐标与相对位移相加得到目标坐标。后续控制流程与
-     * RunToPosition() 相同，使用世界系误差直接调用 SetVelocity()。
+     * 将相对位移按原点 yaw 旋转到世界系后与原点相加得到目标坐标，随后直接
+     * 转发 RunToPosition()，控制环只在那一处维护。
      */
     bool RunToRelativePosition(float relative_x_m,
                                float relative_y_m,
@@ -153,9 +154,27 @@ public:
     void Disable();
 
 private:
+    /**
+     * @brief 用当前位姿复位三轴位置环 PID 的历史状态。
+     * @param x_m 当前 x，单位 m。
+     * @param y_m 当前 y，单位 m。
+     * @param yaw_rad 当前 yaw，单位 rad。
+     *
+     * 预热微分基准并清除跨航点残留，避免出发第一拍把位置当速度输出毛刺。
+     */
+    void ResetPositionPidState(float x_m, float y_m, float yaw_rad);
+
     Struct_Chassis_Config config{}; //!< 底盘尺寸配置副本。
     Struct_Chassis_Motor_Config motor_config[CHASSIS_WHEEL_COUNT]{}; //!< 四轮电机配置副本。
     Class_ZDTMotor motors[CHASSIS_WHEEL_COUNT]; //!< 左前、右前、左后、右后电机对象。
+
+    /** 位置环三轴 PD：x/y 在世界系计算，yaw 用解缠连续角，输出转车体系下发。 */
+    Class_PID position_pid_x{};   //!< 世界系 x 位置环。
+    Class_PID position_pid_y{};   //!< 世界系 y 位置环。
+    Class_PID position_pid_yaw{}; //!< 航向位置环，内部误差为短弧误差。
+    float yaw_pid_last_raw = 0.0f;  //!< 上一拍原始 yaw，用于解缠差分。
+    float yaw_pid_unwrapped = 0.0f; //!< 连续 yaw，仅喂给 PID 的微分项。
+
     std::atomic<bool> initialized{false}; //!< 四台电机 Init() 完成后才允许任务读取反馈。
 };
 
