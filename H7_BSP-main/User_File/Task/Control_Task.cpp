@@ -3,9 +3,13 @@
  * @brief 初始化底盘并执行一次最简单的坐标位置移动。
  */
 
+ 
+#include "bsp_uart.h"
 #include "user_task.h"
 #include "Chassis.h"
 #include "INS.h"
+
+
 
 #include <cstdint>
 
@@ -17,6 +21,9 @@ constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 1000U;
 constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 1000U;
 constexpr float CHASSIS_WHEEL_RADIUS_M = 0.05f;
 constexpr float CHASSIS_GEAR_RATIO = 1.0f;
+volatile bool uart10_rx_ready = false;
+volatile uint16_t uart10_rx_length = 0U;
+uint8_t uart10_rx_BUFF[UART_BUFFER_SIZE];
 
 void InitChassis()
 {
@@ -53,7 +60,20 @@ void InitChassis()
     ins_config.gear_ratio = chassis_config.gear_ratio;
     APP_INS.Init(ins_config);
 }
+    /*串口10接收回调函数*/
+void UART10_RxCallback(uint8_t *buffer, uint16_t length)
+{
+    if (length > UART_BUFFER_SIZE)
+    {
+        length = UART_BUFFER_SIZE;
+    }
+    /*复制内容*/
+    memcpy(uart10_rx_BUFF, buffer, length);
+    uart10_rx_length = length;
+    uart10_rx_ready = true;
+}
 
+/*结束等待*/
 [[noreturn]] void HoldTask()
 {
     for (;;)
@@ -67,13 +87,37 @@ void InitChassis()
 extern "C" void Control_Task(void *argument)
 {
     (void)argument;
+    /*设置当前任务优先级*/
     osThreadSetPriority(osThreadGetId(), osPriorityHigh1);
-
+    /*初始化串口10（视觉通讯）*/
+     UART_Init(&huart10, UART10_RxCallback);
+    /*等待电机启动*/
     osDelay(ZDT_BOOT_DELAY_TICKS);
     InitChassis();
     APP_Chassis.Enable();
      APP_Chassis.Stop();
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
+
+        /*发送YES开始运行*/
+    for (;;){
+        /*清楚残余状态*/    
+        uart10_rx_ready = false;
+        
+        if (uart10_rx_ready)
+        {
+            uart10_rx_ready = false;
+            const uint16_t length = uart10_rx_length;
+            if (memcmp(uart10_rx_BUFF, "YES", 3U) == 0)
+            {
+                uint8_t ready_message[] = "OK";
+                UART_Transmit_Data(&huart10, ready_message,sizeof(ready_message) - 1U);
+                break;
+            }   
+        }
+        osDelay(1U);
+    }
+
+
     APP_Chassis.RunToRelativePosition(-0.95f,
                               0.0f,
                               0.01f,
