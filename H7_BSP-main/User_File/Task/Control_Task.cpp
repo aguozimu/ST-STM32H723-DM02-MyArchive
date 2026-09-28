@@ -13,6 +13,8 @@
 
 #include <cstdint>
 
+#include "FreeRTOS.h"
+#include "task.h"
 namespace
 {
 constexpr uint16_t ZDT_ACCELERATION = 10U;
@@ -24,7 +26,8 @@ constexpr float CHASSIS_GEAR_RATIO = 1.0f;
 volatile bool uart10_rx_ready = false;
 volatile uint16_t uart10_rx_length = 0U;
 uint8_t uart10_rx_BUFF[UART_BUFFER_SIZE];
-
+uint8_t uart10_tx_BUFF[UART_BUFFER_SIZE];
+static void run();
 void InitChassis()
 {
     Struct_Chassis_Config chassis_config{};
@@ -73,6 +76,81 @@ void UART10_RxCallback(uint8_t *buffer, uint16_t length)
     uart10_rx_ready = true;
 }
 
+
+static void run(){
+
+    APP_Chassis.RunToRelativePosition(-0.95f,
+                                      0.0f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      -0.94f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      0.0f,
+                                      0.01f,
+                                      PI / 2.0f,
+                                      0.01f);
+
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      1.25f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      0.0f,
+                                      0.01f,
+                                      -PI / 2.0f,
+                                      0.01f);
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      -1.2f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+    APP_Chassis.RunToRelativePosition(-1.40f,
+                                      0.0f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      0.8f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      3.2f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+    APP_Chassis.RunToRelativePosition(1.5f,
+                                      0.0f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+
+    APP_Chassis.RunToPosition(0.0f,
+                              2.1f,
+                              0.01f,
+                              0.0f,
+                              0.05f);
+    // GOHome
+    APP_Chassis.RunToPosition(0.0f,
+                              0.0f,
+                              0.01f,
+                              0.0f,
+                              0.05f);
+
+    APP_Chassis.Stop();
+}
+
+
 /*结束等待*/
 [[noreturn]] void HoldTask()
 {
@@ -90,108 +168,35 @@ extern "C" void Control_Task(void *argument)
     /*设置当前任务优先级*/
     osThreadSetPriority(osThreadGetId(), osPriorityHigh1);
     /*初始化串口10（视觉通讯）*/
-     UART_Init(&huart10, UART10_RxCallback);
+    UART_Init(&huart10, UART10_RxCallback);
     /*等待电机启动*/
     osDelay(ZDT_BOOT_DELAY_TICKS);
     InitChassis();
     APP_Chassis.Enable();
-     APP_Chassis.Stop();
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
-
-        /*发送YES开始运行*/
-    for (;;){
-        /*清楚残余状态*/    
-        uart10_rx_ready = false;
-        
+    APP_Chassis.Stop();
+    /*等待视觉发送YES后开始运行*/
+    for (;;)
+    {
         if (uart10_rx_ready)
         {
+            bool is_yes = false;
+            taskENTER_CRITICAL();
             uart10_rx_ready = false;
             const uint16_t length = uart10_rx_length;
-            if (memcmp(uart10_rx_BUFF, "YES", 3U) == 0)
+            is_yes = (length >= 3U) && (memcmp(uart10_rx_BUFF, "YES", 3U) == 0);
+            taskEXIT_CRITICAL();
+
+            if (is_yes)
             {
-                uint8_t ready_message[] = "OK";
-                UART_Transmit_Data(&huart10, ready_message,sizeof(ready_message) - 1U);
+                memcpy(uart10_tx_BUFF, "OK", 2U);
+                UART_Transmit_Data(&huart10,uart10_tx_BUFF, 2U);
                 break;
-            }   
+            }
         }
         osDelay(1U);
     }
 
-
-    APP_Chassis.RunToRelativePosition(-0.95f,
-                              0.0f,
-                              0.01f,
-                              0.0f,
-                              0.05f);
-
-    APP_Chassis.RunToRelativePosition(0.0f,
-                              -0.94f,
-                              0.01f,
-                              0.0f,
-                              0.05f);
-    
-     APP_Chassis.RunToRelativePosition(0.0f,
-                              0.0f,
-                              0.01f,
-                              PI/2.0f,
-                              0.01f);                              
-                              
-    APP_Chassis.RunToRelativePosition(0.0f,
-                              1.25f,
-                              0.01f,
-                              0.0f,
-                              0.05f);  
-                         
-                                                     
-       APP_Chassis.RunToRelativePosition(0.0f,
-                              0.0f,
-                              0.01f,
-                              -PI/2.0f,
-                              0.01f); 
-       APP_Chassis.RunToRelativePosition(0.0f,
-                              -1.2f,
-                              0.01f,
-                              0.0f,
-                              0.05f); 
-       APP_Chassis.RunToRelativePosition(-1.40f,
-                              0.0f,
-                              0.01f,
-                              0.0f,
-                              0.05f); 
-       APP_Chassis.RunToRelativePosition(0.0f,
-                              0.8f,
-                              0.01f,
-                              0.0f,
-                              0.05f); 
-
-       APP_Chassis.RunToRelativePosition(0.0f,
-                              3.2f,
-                              0.01f,
-                              0.0f,
-                              0.05f); 
-       APP_Chassis.RunToRelativePosition(1.5f,
-                              0.0f,
-                              0.01f,
-                              0.0f,
-                              0.05f);     
-    //    APP_Chassis.RunToRelativePosition(2.0f,
-    //                           0.0f,
-    //                           0.01f,
-    //                           0.0f,
-    //                           0.05f);                                                          
-    APP_Chassis.RunToPosition(0.0f,
-                              2.1f,
-                              0.01f,
-                              0.0f,
-                              0.05f);    
-    //GOHome   
-    APP_Chassis.RunToPosition(0.0f,
-                              0.0f,
-                              0.01f,
-                              0.0f,
-                              0.05f);                          
-
-    //APP_Chassis.Disable();
-     APP_Chassis.Stop();
+    run();
     HoldTask();
 }
