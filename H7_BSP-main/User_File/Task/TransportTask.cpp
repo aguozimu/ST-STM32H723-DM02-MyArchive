@@ -15,7 +15,9 @@
 #include "INS.h"
 #include "usb_device.h"
 #include "user_task.h"
-
+#include <string.h>
+#include "FreeRTOS.h"
+#include "task.h"
 
 /* Private macros ------------------------------------------------------------*/
 
@@ -37,6 +39,23 @@ float motor_position_deg[CHASSIS_WHEEL_COUNT] = {};
 float wheel_position_data[3] = {};
 float gyro_position_data[3] = {};
 float complementary_position_data[3] = {};
+
+volatile bool uart7_rx_ready = false;
+volatile uint16_t uart7_rx_length = 0U;
+uint8_t uart7_rx_BUFF[UART_BUFFER_SIZE];
+}
+
+/* 串口7接收回调函数 */
+void UART7_RxCallback(uint8_t *buffer, uint16_t length)
+{
+    if (length > UART_BUFFER_SIZE)
+    {
+        length = UART_BUFFER_SIZE;
+    }
+    /* 复制内容 */
+    memcpy(uart7_rx_BUFF, buffer, length);
+    uart7_rx_length = length;
+    uart7_rx_ready = true;
 }
 
 /* Private function declarations ---------------------------------------------*/
@@ -45,6 +64,7 @@ float complementary_position_data[3] = {};
 
 extern "C" void Transport_Task(void *argument)
 {
+    UART_Init(&huart7, UART7_RxCallback);
     MX_USB_DEVICE_Init();
     /* UART7 justfloat 顺序：0~2 IMU 原始加速度，3~6 轮速，7~10 轮位置，11~19 三个 INS 位姿。 */
     EricTool_UART.Set_Data(VOFA_TELEMETRY_CHANNEL_COUNT,
@@ -97,6 +117,26 @@ extern "C" void Transport_Task(void *argument)
         complementary_position_data[2] = complementary_position.yaw_rad;
 
         EricTool_UART.TIM_1ms_Write_PeriodElapsedCallback();
+
+    if (uart7_rx_ready)
+        {
+            bool is_yes = false;
+            taskENTER_CRITICAL();
+            uart7_rx_ready = false;
+            const uint16_t length = uart7_rx_length;
+            is_yes =  (memcmp(uart7_rx_BUFF, "S", 1U) == 0);
+            taskEXIT_CRITICAL();
+
+            if (is_yes)
+            {
+                APP_Chassis.Stop();
+                memcpy(uart7_rx_BUFF, "OK", 2U);
+                UART_Transmit_Data(&huart10,uart7_rx_BUFF, 2U);
+
+            }
+        }
+
+
         osDelay(50);
     }
 }

@@ -175,27 +175,27 @@ extern "C" void Control_Task(void *argument)
     APP_Chassis.Enable();
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
     APP_Chassis.Stop();
-    /*等待视觉发送YES后开始运行*/
-    for (;;)
-    {
-        if (uart10_rx_ready)
-        {
-            bool is_yes = false;
-            taskENTER_CRITICAL();
-            uart10_rx_ready = false;
-            const uint16_t length = uart10_rx_length;
-            is_yes = (length >= 3U) && (memcmp(uart10_rx_BUFF, "YES", 3U) == 0);
-            taskEXIT_CRITICAL();
+    // /*等待视觉发送YES后开始运行*/
+    // for (;;)
+    // {
+    //     if (uart10_rx_ready)
+    //     {
+    //         bool is_yes = false;
+    //         taskENTER_CRITICAL();
+    //         uart10_rx_ready = false;
+    //         const uint16_t length = uart10_rx_length;
+    //         is_yes = (length >= 3U) && (memcmp(uart10_rx_BUFF, "YES", 3U) == 0);
+    //         taskEXIT_CRITICAL();
 
-            if (is_yes)
-            {
-                memcpy(uart10_tx_BUFF, "OK", 2U);
-                UART_Transmit_Data(&huart10,uart10_tx_BUFF, 2U);
-                break;
-            }
-        }
-        osDelay(1U);
-    }
+    //         if (is_yes)
+    //         {
+    //             memcpy(uart10_tx_BUFF, "OK", 2U);
+    //             UART_Transmit_Data(&huart10,uart10_tx_BUFF, 2U);
+    //             break;
+    //         }
+    //     }
+    //     osDelay(1U);
+    // }
 
     run();
     HoldTask();
