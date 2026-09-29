@@ -2,7 +2,8 @@
  * @file    TransportTask.cpp
  * @brief   传输任务 —— USB CDC 初始化与遥测输出
  * @author  zzm
- * @version 1.4
+ * @version 1.5
+ * @date    2026-09-29 1.5 UART7 增加 CAN2 BUS-OFF 状态通道
  * @date    2026-09-24 1.4 UART7 增加 INS 三个位姿的 x/y/yaw
  * @date    2026-09-24 1.3 增加 UART7 VOFA+ 四轮速度/位置反馈
  * @date    2026-07-11 1.2 移除未使用的 PID tuner
@@ -13,6 +14,7 @@
 #include "sys_debug.h"
 #include "Chassis.h"
 #include "INS.h"
+#include "fdcan.h"
 #include "usb_device.h"
 #include "user_task.h"
 #include <string.h>
@@ -29,8 +31,11 @@ namespace
 {
 constexpr uint8_t VOFA_IMU_CHANNEL_COUNT = 3U;
 constexpr uint8_t VOFA_INS_CHANNEL_COUNT = 3U * 3U;
+// CAN2（底盘电机总线）BUS-OFF 状态通道：1 表示已触发总线关闭错误，0 表示正常。
+constexpr uint8_t VOFA_CAN_CHANNEL_COUNT = 1U;
 constexpr uint8_t VOFA_TELEMETRY_CHANNEL_COUNT =
-    VOFA_IMU_CHANNEL_COUNT + 2U * CHASSIS_WHEEL_COUNT + VOFA_INS_CHANNEL_COUNT;
+    VOFA_IMU_CHANNEL_COUNT + 2U * CHASSIS_WHEEL_COUNT + VOFA_INS_CHANNEL_COUNT +
+    VOFA_CAN_CHANNEL_COUNT;
 
 
 float motor_speed_rpm[CHASSIS_WHEEL_COUNT] = {};
@@ -39,6 +44,8 @@ float motor_position_deg[CHASSIS_WHEEL_COUNT] = {};
 float wheel_position_data[3] = {};
 float gyro_position_data[3] = {};
 float complementary_position_data[3] = {};
+// VOFA+ 0 基通道 20：CAN2 BUS-OFF 状态，1 表示已触发总线关闭错误，0 表示正常。
+float can2_bus_off_status = 0.0f;
 
 volatile bool uart7_rx_ready = false;
 volatile uint16_t uart7_rx_length = 0U;
@@ -66,7 +73,8 @@ extern "C" void Transport_Task(void *argument)
 {
     UART_Init(&huart7, UART7_RxCallback);
     MX_USB_DEVICE_Init();
-    /* UART7 justfloat 顺序：0~2 IMU 原始加速度，3~6 轮速，7~10 轮位置，11~19 三个 INS 位姿。 */
+    /* UART7 justfloat 顺序：0~2 IMU 原始加速度，3~6 轮速，7~10 轮位置，
+       11~19 三个 INS 位姿，20 CAN2 BUS-OFF 状态（1 触发错误，0 正常）。 */
     EricTool_UART.Set_Data(VOFA_TELEMETRY_CHANNEL_COUNT,
                            (int) &Debug_IMU_Data.Original_Accel_X_m_s2,
                            (int) &Debug_IMU_Data.Original_Accel_Y_m_s2,
@@ -87,7 +95,8 @@ extern "C" void Transport_Task(void *argument)
                            (int) &gyro_position_data[2],
                            (int) &complementary_position_data[0],
                            (int) &complementary_position_data[1],
-                           (int) &complementary_position_data[2]);
+                           (int) &complementary_position_data[2],
+                           (int) &can2_bus_off_status);
     for (;;)
     {
         APP_Chassis.Process();
@@ -115,6 +124,14 @@ extern "C" void Transport_Task(void *argument)
         complementary_position_data[0] = complementary_position.x_m;
         complementary_position_data[1] = complementary_position.y_m;
         complementary_position_data[2] = complementary_position.yaw_rad;
+
+        /* CAN2 协议状态：PSR 的 BO 位置位表示总线已关闭（BUS-OFF）。 */
+        FDCAN_ProtocolStatusTypeDef can2_protocol_status = {};
+        if (HAL_FDCAN_GetProtocolStatus(&hfdcan2, &can2_protocol_status) == HAL_OK)
+        {
+            can2_bus_off_status =
+                (can2_protocol_status.BusOff != 0U) ? 1.0f : 0.0f;
+        }
 
         EricTool_UART.TIM_1ms_Write_PeriodElapsedCallback();
 
