@@ -87,7 +87,7 @@ public:
      * @param y 向前为正的纵向速度，通常单位 m/s。
      * @param omega 逆时针为正的底盘角速度，通常单位 rad/s。
      *
-     * 四轮速度分别乘以 speed_to_motor 后，以 RPM 传给 ZDTmotor。
+     * 四轮速度分别乘以 speed_to_motor 后，以一条 0xAA 多电机命令传给 ZDTmotor。
      */
     void SetVelocity(float x, float y, float omega);
 

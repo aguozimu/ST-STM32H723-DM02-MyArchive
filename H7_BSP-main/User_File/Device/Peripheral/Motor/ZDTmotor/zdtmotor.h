@@ -164,6 +164,20 @@ public:
                   uint16_t acceleration,
                   bool synchronous = false);
     /**
+     * @brief 按手册 5.3.1 编码一条 0xAA 多电机速度命令。
+     * @param motor_group 同一总线上的电机数组，顺序与 speed_rpm/acceleration 一致。
+     * @param speed_rpm 每个电机的有符号目标转速，单位 RPM。
+     * @param acceleration 每个电机的加速度参数：X 为 RPM/s，Emm 为 0~255 档位。
+     * @param motor_count 电机数量，由调用方保证不超过数组长度。
+     * @return true 命令成功进入 CAN 队列；false 参数无效、电机不满足同总线/校验约束或队列提交失败。
+     * @note 内嵌速度命令的同步标志固定为 0；多电机命令本身使各命令同时开始执行。
+     */
+    bool SetMultiMotorSpeeds(const Class_ZDTMotor *motor_group,
+                             const float *speed_rpm,
+                             const uint16_t *acceleration,
+                             uint8_t motor_count);
+
+    /**
      * @brief 发送 FD 位置命令：X 为梯形曲线位置，Emm 为脉冲数位置。
      * @param position_deg 有符号目标位置，单位度；符号决定运动方向。
      * @param speed_rpm 最大速度，单位 RPM，必须为非负值。
@@ -248,6 +262,12 @@ private:
                        const uint8_t *body,
                        uint8_t body_length,
                        bool track_motion);
+    /** @brief 按固件类型编码 F6 速度命令体，不包含 Addr、Code 和校验字节。 */
+    bool EncodeSpeedBody(float speed_rpm,
+                         uint16_t acceleration,
+                         bool synchronous,
+                         uint8_t *body,
+                         uint8_t &body_length) const;
     /** @brief 校验 CAN 返回数据；计算 XOR/CRC8 时把扩展 ID 中的 Addr 补回首字节。 */
     bool CheckResponseChecksum(const uint8_t *data, uint8_t length) const;
     /** @brief 对逻辑命令 [Addr, Function, Body...] 计算配置的校验字节。 */

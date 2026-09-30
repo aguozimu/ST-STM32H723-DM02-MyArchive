@@ -1,8 +1,9 @@
 /**
  * @file zdtmotor.cpp
  * @brief ZDT X42S 第二代闭环步进电机 CAN 命令编码与反馈解析。
- * @details 注释中的命令格式和量纲来自用户手册 V1.0.5 第 4、5、7 章；CAN
- *          数据区不含 Addr，Addr 编入 29 位扩展 ID。
+ * @details 注释中的命令格式和量纲来自用户手册 V1.0.5 第 4、5、7 章；普通
+ *          CAN 命令的数据区不含 Addr，Addr 编入 29 位扩展 ID；AA 多电机
+ *          命令的内嵌 Addr 属于协议数据，外层扩展 ID 仍使用广播地址 0。
  * @author zzm
  */
 
@@ -13,10 +14,10 @@
 #include <cmath>
 #include <cstring>
 
-/** FD(X) 命令体为 13 字节；预留到 16 字节，不含 Code 与校验字节。 */
-static constexpr uint8_t ZDT_MAX_COMMAND_BODY = 16U;
+/** 单条 FD(X) 命令体为 13 字节；多电机 AA 命令需容纳多条内嵌命令，预留 64 字节。 */
+static constexpr uint8_t ZDT_MAX_COMMAND_BODY = 64U;
 /** 每个 Classic CAN 分包用 1 字节重复 Code，最多承载 7 个后续逻辑字节。 */
-static constexpr uint8_t ZDT_MAX_COMMAND_FRAMES = 3U;
+static constexpr uint8_t ZDT_MAX_COMMAND_FRAMES = 10U;
 /** 本地等待 0x02“命令接收正确”应答的超时；不是手册规定的运动超时。 */
 static constexpr uint64_t ZDT_RESPONSE_TIMEOUT_US = 50000U;
 /** 驱动本地在线判定窗口；手册没有规定该数值。 */
@@ -74,6 +75,7 @@ static bool ZDT_IsActionFunction(uint8_t function)
     case 0x11U:
     case 0x9AU:
     case 0x9CU:
+    case 0xAAU:
     case 0xF3U:
     case 0xF5U:
     case 0xF6U:
@@ -369,24 +371,26 @@ bool Class_ZDTMotor::TriggerSynchronousMotion()
 }
 
 /**
- * @brief 根据固件类型编码手册 5.3.5/5.3.7 的 F6 速度命令。
+ * @brief 按固件类型编码 F6 速度命令体，不包含 Addr、Code 和校验字节。
  * @details X：Dir + Acc(RPM/s)[2] + Speed(0.1 RPM)[2] + Sync；Emm：
  *          Dir + Speed(RPM)[2] + AccLevel[1] + Sync。
  */
-bool Class_ZDTMotor::SetSpeed(float speed_rpm,
-                              uint16_t acceleration,
-                              bool synchronous)
+bool Class_ZDTMotor::EncodeSpeedBody(float speed_rpm,
+                                     uint16_t acceleration,
+                                     bool synchronous,
+                                     uint8_t *body,
+                                     uint8_t &body_length) const
 {
-    if (!std::isfinite(speed_rpm))
+    body_length = 0U;
+    if (body == nullptr || !std::isfinite(speed_rpm))
     {
         return false;
     }
 
     /* 协议规定 00=CW、01=CCW；reverse 统一翻转应用层与协议层的方向定义。 */
-    float directed_speed = reverse ? -speed_rpm : speed_rpm;
+    const float directed_speed = reverse ? -speed_rpm : speed_rpm;
     const uint8_t direction = directed_speed < 0.0f ? 0x01U : 0x00U;
     const float magnitude = std::fabs(directed_speed);
-    uint8_t body[6]{};
     body[0] = direction;
 
     if (firmware == Enum_ZDTMotor_Firmware::X)
@@ -399,7 +403,8 @@ bool Class_ZDTMotor::SetSpeed(float speed_rpm,
         /* X 速度字段分辨率为 0.1 RPM，范围 0~30000（0~3000.0 RPM）。 */
         ZDT_WriteBE16(&body[3], (uint16_t)(magnitude * 10.0f + 0.5f));
         body[5] = synchronous ? 0x01U : 0x00U;
-        return SubmitCommand(address, 0xF6U, body, 6U, true);
+        body_length = 6U;
+        return true;
     }
 
     if (magnitude > 3000.0f || acceleration > 255U)
@@ -410,7 +415,95 @@ bool Class_ZDTMotor::SetSpeed(float speed_rpm,
     ZDT_WriteBE16(&body[1], (uint16_t)(magnitude + 0.5f));
     body[3] = (uint8_t)acceleration;
     body[4] = synchronous ? 0x01U : 0x00U;
-    return SubmitCommand(address, 0xF6U, body, 5U, true);
+    body_length = 5U;
+    return true;
+}
+
+/**
+ * @brief 按手册 5.3.1 将多台电机的 F6 速度命令拼成一条 AA 多电机命令。
+ *
+ * 逻辑帧为 `00 AA Length[2] (Addr Code Data Checksum)... Checksum`；Length
+ * 是整个逻辑帧的总字节数。CAN 分包由 SubmitCommand 统一按 `(Addr<<8)|Packet`
+ * 处理：外层 Addr=0，Packet 从 0 开始，每包 data[0] 重复 Code=AA。
+ * 内嵌速度命令的同步标志固定为 0，因为 AA 命令本身已使所有内嵌命令同时开始。
+ */
+bool Class_ZDTMotor::SetMultiMotorSpeeds(const Class_ZDTMotor *motor_group,
+                                         const float *speed_rpm,
+                                         const uint16_t *acceleration,
+                                         uint8_t motor_count)
+{
+    if (motor_group == nullptr || speed_rpm == nullptr ||
+        acceleration == nullptr || motor_count == 0U || address == 0U || hfdcan == nullptr)
+    {
+        return false;
+    }
+
+    uint8_t body[ZDT_MAX_COMMAND_BODY]{};
+    uint16_t body_length = 2U; /* 先保留 AA 命令的 2 字节总长度字段。 */
+
+    for (uint8_t i = 0U; i < motor_count; ++i)
+    {
+        if (motor_group[i].hfdcan != hfdcan ||
+            motor_group[i].checksum != checksum ||
+            motor_group[i].address == 0U)
+        {
+            return false;
+        }
+
+        for (uint8_t j = 0U; j < i; ++j)
+        {
+            if (motor_group[j].address == motor_group[i].address)
+            {
+                return false;
+            }
+        }
+
+        uint8_t command_body[6]{};
+        uint8_t command_body_length = 0U;
+        if (!motor_group[i].EncodeSpeedBody(speed_rpm[i],
+                                            acceleration[i],
+                                            false,
+                                            command_body,
+                                            command_body_length))
+        {
+            return false;
+        }
+
+        /* 内嵌命令包含 Addr、Code、数据体和各自的校验字节。 */
+        const uint8_t inner_length =
+            (uint8_t)(1U + 1U + command_body_length + 1U);
+        if ((uint16_t)body_length + inner_length > sizeof(body))
+        {
+            return false;
+        }
+
+        body[body_length++] = motor_group[i].address;
+        body[body_length++] = 0xF6U;
+        std::memcpy(&body[body_length], command_body, command_body_length);
+        body_length = (uint8_t)(body_length + command_body_length);
+        body[body_length++] = motor_group[i].CalculateCommandChecksum(
+            motor_group[i].address, 0xF6U, command_body, command_body_length);
+    }
+
+    /* 总长度包含 Addr、Code、长度字段、内嵌命令和最后一条校验码。 */
+    ZDT_WriteBE16(&body[0], (uint16_t)(body_length + 3U));
+    return SubmitCommand(0U, 0xAAU, body, (uint8_t)body_length, false);
+}
+
+/**
+ * @brief 发送单台电机速度命令，编码规则见 EncodeSpeedBody()。
+ */
+bool Class_ZDTMotor::SetSpeed(float speed_rpm,
+                              uint16_t acceleration,
+                              bool synchronous)
+{
+    uint8_t body[6]{};
+    uint8_t body_length = 0U;
+    if (!EncodeSpeedBody(speed_rpm, acceleration, synchronous, body, body_length))
+    {
+        return false;
+    }
+    return SubmitCommand(address, 0xF6U, body, body_length, true);
 }
 
 /**

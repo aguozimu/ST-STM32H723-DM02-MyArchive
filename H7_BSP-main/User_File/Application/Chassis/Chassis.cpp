@@ -159,15 +159,16 @@ void Class_Chassis::SetVelocity(float x, float y, float omega)
         y + x + rotation, // 右后轮
     };
 
-    // 将解算速度换算为 RPM，并把四条速度命令缓存到 ZDT 电机。
+    // 将解算速度换算为 RPM，并用手册 5.3.1 的一条 AA 多电机命令同时下发。
+    float motor_speed_rpm[CHASSIS_WHEEL_COUNT] = {};
+    uint16_t motor_acceleration[CHASSIS_WHEEL_COUNT] = {};
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
-        motors[i].SetSpeed(wheel_speed[i] * motor_config[i].speed_to_motor,
-                           motor_config[i].acceleration,
-                           true);
+        motor_speed_rpm[i] = wheel_speed[i] * motor_config[i].speed_to_motor;
+        motor_acceleration[i] = motor_config[i].acceleration;
     }
-    // 四条缓存命令在收到广播帧后同时开始执行。
-    motors[Chassis_Wheel_LeftFront].TriggerSynchronousMotion();
+    motors[Chassis_Wheel_LeftFront].SetMultiMotorSpeeds(
+        motors, motor_speed_rpm, motor_acceleration, CHASSIS_WHEEL_COUNT);
 }
 
 void Class_Chassis::RunForSeconds(float x,
