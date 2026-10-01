@@ -28,7 +28,7 @@ constexpr float POSITION_PID_KP_YAW = 1.0f;
 /** 三轴 Kd 起步值，对测量速度做阻尼；实机过冲加大、发抖减小。 */
 constexpr float POSITION_PID_KD = 0.1f;
 /** 平移输出限幅 m/s，替代纯 P 时代误差直接当速度的地板油。 */
-constexpr float POSITION_PID_OUT_MAX_XY = 0.25f;
+constexpr float POSITION_PID_OUT_MAX_XY = 0.75f;
 /** 航向输出限幅 rad/s。 */
 constexpr float POSITION_PID_OUT_MAX_YAW = 1.0f;
 
