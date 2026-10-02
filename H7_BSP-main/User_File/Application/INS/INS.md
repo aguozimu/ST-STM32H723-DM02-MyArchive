@@ -120,6 +120,37 @@ dyaw = gyro_weight * dyaw_gyro + (1 - gyro_weight) * dyaw_wheel
 | `GetGyroPosition()` | 读取陀螺仪航向位姿 |
 | `GetComplementaryPosition()` | 读取互补滤波位姿 |
 | `GetState()` | 一次读取三个位姿快照 |
+| `StartCalibration()` | 记录当前三组世界系位姿，作为运行时误差基准 |
+| `EndCalibration()` | 用当前位姿与记录位姿的差值修正世界系原点 |
+
+## 世界系校准
+
+世界系来自复位瞬间的车体系，长时间运行后原点会累积误差。两个函数用一次已知的
+闭环移动（外部用 `SetVelocity()` 驱动）把世界系原点重新对齐：
+
+1. `StartCalibration()`：记录当前函数 1/2/3 的三组世界系位姿快照；
+2. 外部调用 `SetVelocity()` 完成校准移动；
+3. `EndCalibration()`：读取当前位姿与记录位姿的差值（本次运行产生的误差）：
+
+```text
+error = current - recorded
+pose  = pose - error
+```
+
+三个位姿同处一个世界系，统一扣除函数 3 互补滤波位姿的误差，等价于把世界系原点
+从校准起点平移到校准终点。校准只修正静态原点误差，不修正轮径、减速比等比例误差。
+
+典型用法：
+
+```cpp
+if (APP_INS.StartCalibration())
+{
+    /* 外部用 SetVelocity() 完成校准移动 */
+    APP_INS.EndCalibration();
+}
+```
+
+三组位姿和校准数据都由 `Class_INS` 内部的互斥锁保护，周期函数与外部任务可以并发调用。
 
 ## 初始化
 
@@ -175,4 +206,5 @@ pulse(10, 4,
 3. 各轮位置基准按轮建立，避免把上电绝对位置当成一次大位移；
 4. 世界系来自复位瞬间的机体系，没有绝对位置或绝对航向观测时长期会漂移；
 5. `gear_ratio` 非正时按直驱 1 处理；
-6. 所有任务共享全局实例 `APP_INS`。
+6. 所有任务共享全局实例 `APP_INS`；
+7. 世界系校准只扣除一次运行的累计误差，不做比例标定。

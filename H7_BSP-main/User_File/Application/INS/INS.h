@@ -11,6 +11,7 @@
 #define USER_FILE_APPLICATION_INS_INS_H
 
 #include "Chassis.h"
+#include "cmsis_os2.h"
 
 #include <atomic>
 #include <stdint.h>
@@ -47,6 +48,13 @@ struct Struct_INS_State
     Struct_INS_Pose complementary; //!< 函数 3：互补滤波后位姿。
 };
 
+/** 世界坐标系校准记录：保存校准开始时的世界系快照。 */
+struct Struct_INS_Calibration
+{
+    bool active = false;            //!< 是否处于一次校准流程中。
+    Struct_INS_State start_state{}; //!< 校准开始时记录的三组世界系位姿。
+};
+
 /** 按 Chassis 应用层风格实现的最简底盘 INS。 */
 class Class_INS
 {
@@ -80,7 +88,57 @@ public:
     /** 一次性读取三个位姿快照。 */
     Struct_INS_State GetState() const;
 
+    /**
+     * @brief 世界坐标系校准开始：记录当前世界系相关的全部数据。
+     * @return 记录成功返回 true；世界系位姿尚未有效时返回 false。
+     *
+     * 由外部任务在开始校准移动（SetVelocity）之前调用一次。函数会把函数 1、
+     * 2、3 的三组世界系位姿完整保存下来，作为校准结束时计算运行误差的基准。
+     */
+    bool StartCalibration();
+
+    /**
+     * @brief 世界坐标系校准结束：用本次运行的误差修正世界系原点。
+     * @return 修正成功返回 true；未调用 StartCalibration() 时返回 false。
+     *
+     * 读取当前世界系位姿与校准开始时记录位姿的差值，即本次运行累计产生的
+     * 误差，再从三组世界系位姿中扣除，等价于把世界系原点重新对齐到校准
+     * 起点。三个位姿同处一个世界系，统一使用函数 3 互补滤波位姿的误差：
+     *
+     *     error = current - recorded
+     *     pose  = pose - error
+     */
+    bool EndCalibration();
+
 private:
+    /** 加锁/解锁；Init() 之前锁对象未创建时为空操作。 */
+    void Lock() const;
+    void Unlock() const;
+
+    /** 作用域互斥锁：构造时加锁、析构时解锁，避免提前 return 漏解锁。 */
+    class Class_Lock_Guard
+    {
+    public:
+        explicit Class_Lock_Guard(const Class_INS &owner) : owner_(owner)
+        {
+            owner_.Lock();
+        }
+
+        ~Class_Lock_Guard()
+        {
+            owner_.Unlock();
+        }
+
+        Class_Lock_Guard(const Class_Lock_Guard &) = delete;
+        Class_Lock_Guard &operator=(const Class_Lock_Guard &) = delete;
+
+    private:
+        const Class_INS &owner_;
+    };
+
+    /** 在已加锁的前提下清零三个位姿和所有差分基准。 */
+    void ResetState();
+
     Struct_INS_Config config{}; //!< 已完成合法性修正的机械参数。
 
     Struct_INS_Pose wheel_position{};         //!< 函数 1 输出。
@@ -105,6 +163,9 @@ private:
     uint32_t gyro_used_wheel_sequence = 0U;          //!< 函数 2 已使用的轮式平移序号。
     uint32_t complementary_used_wheel_sequence = 0U; //!< 函数 3 已使用的轮式序号。
     uint32_t complementary_used_gyro_sequence = 0U;  //!< 函数 3 已使用的陀螺仪序号。
+
+    Struct_INS_Calibration calibration{}; //!< 世界系校准记录。
+    osMutexId_t pose_mutex = nullptr;     //!< 保护三组位姿和校准数据的互斥锁。
 
     std::atomic<bool> initialized{false}; //!< Init() 完成后才允许周期函数更新。
 };

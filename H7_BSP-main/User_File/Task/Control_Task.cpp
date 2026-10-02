@@ -28,7 +28,7 @@ volatile uint16_t uart10_rx_length = 0U;
 uint8_t uart10_rx_BUFF[UART_BUFFER_SIZE];
 uint8_t vision_frame[UART_BUFFER_SIZE];
 // static VisionMode vision_mode = V_IDLE;
-static uint8_t vision_ref_count = 0U;
+
 
 void InitChassis()
 {
@@ -111,49 +111,52 @@ static void Vision_Process(void)
 
             if (memcmp(vision_frame, "RES", 3U) == 0)
             {
-                for (;;)
+                if (APP_INS.StartCalibration())
                 {
-                    if (uart10_rx_ready)
+
+                    for (;;)
                     {
-                        taskENTER_CRITICAL();
-                        uart10_rx_ready = false;
-                        const uint16_t length = uart10_rx_length;
-                        memcpy(vision_frame, uart10_rx_BUFF, length);
-                        taskEXIT_CRITICAL();
-                        float vx = 0.0f;
-                        float vy = 0.0f;
-                        float wz = 0.0f;
 
-                        /* STM32 小端，直接 memcpy 最简单 */
-                        memcpy(&vx, &vision_frame[4], 4U);
-                        memcpy(&vy, &vision_frame[9], 4U);
-                        memcpy(&wz, &vision_frame[14], 4U);
-                        APP_Chassis.SetVelocity(vx, vy, wz);
-                        if (memcmp(vision_frame, "YES", 3U) == 0)
+                        if (uart10_rx_ready)
                         {
+                            taskENTER_CRITICAL();
+                            uart10_rx_ready = false;
+                            const uint16_t length = uart10_rx_length;
+                            memcpy(vision_frame, uart10_rx_BUFF, length);
+                            taskEXIT_CRITICAL();
+                            float vx = 0.0f;
+                            float vy = 0.0f;
+                            float wz = 0.0f;
 
-                            END = true;
-                            break;
-                        }
-                        else if (memcmp(vision_frame, "REF", 3U) == 0)
-                        {
+                            /* STM32 小端，直接 memcpy 最简单 */
+                            memcpy(&vx, &vision_frame[4], 4U);
+                            memcpy(&vy, &vision_frame[9], 4U);
+                            memcpy(&wz, &vision_frame[14], 4U);
+                            APP_Chassis.SetVelocity(vx, vy, wz);
+                            if (memcmp(vision_frame, "YES", 3U) == 0)
+                            {
 
-                            break;
+                                END = true;
+                                break;
+                            }
+                            else if (memcmp(vision_frame, "REF", 3U) == 0)
+                            {
+
+                                break;
+                            }
                         }
-                    
+                        osDelay(1U);
                     }
-                 osDelay(1U);
-                } 
+
+                    APP_INS.EndCalibration();
+                }
             }
 
-             if (memcmp(vision_frame, "YES", 3U) == 0)
-                        {
+            if (memcmp(vision_frame, "YES", 3U) == 0)
+            {
 
-                            END = true;
-                        
-                        }               
-
-
+                END = true;
+            }
         }
         if (END == true)
         {
@@ -192,45 +195,50 @@ extern "C" void Control_Task(void *argument)
 
     Vision_Process();
 
-    APP_Chassis.RunToRelativePosition(-0.95f,
+    APP_Chassis.RunToRelativePosition(-0.955f,
                                       0.0f,
                                       0.01f,
                                       0.0f,
                                       0.05f);
 
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   -0.94f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      -0.94f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
 
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   0.0f,
-    //                                   0.01f,
-    //                                   PI / 2.0f,
-    //                                   0.01f);
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      0.0f,
+                                      0.01f,
+                                      PI / 2.0f,
+                                      0.01f);
 
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   1.25f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      1.25f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
 
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   0.0f,
-    //                                   0.01f,
-    //                                   -PI / 2.0f,
-    //                                   0.01f);
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   -1.2f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
-    // APP_Chassis.RunToRelativePosition(-1.40f,
-    //                                   0.0f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      0.0f,
+                                      0.01f,
+                                      -PI / 2.0f,
+                                      0.01f);
+   Vision_Process();
+
+
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      -1.2f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+    APP_Chassis.RunToRelativePosition(-1.40f,
+                                      0.0f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+   Vision_Process();
+
     // APP_Chassis.RunToRelativePosition(0.0f,
     //                                   0.8f,
     //                                   0.01f,

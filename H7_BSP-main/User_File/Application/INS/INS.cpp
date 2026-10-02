@@ -81,6 +81,14 @@ void Class_INS::Init(const Struct_INS_Config &new_config)
 {
     initialized.store(false, std::memory_order_release);
 
+    /* 互斥锁只创建一次：三组位姿和校准数据都由它保护。 */
+    if (pose_mutex == nullptr)
+    {
+        pose_mutex = osMutexNew(nullptr);
+    }
+
+    const Class_Lock_Guard lock(*this);
+
     config.half_length_m =
         (std::isfinite(new_config.half_length_m) && new_config.half_length_m >= 0.0f)
             ? new_config.half_length_m
@@ -101,7 +109,7 @@ void Class_INS::Init(const Struct_INS_Config &new_config)
                              ? ClampUnit(new_config.gyro_weight)
                              : INS_DEFAULT_GYRO_WEIGHT;
 
-    Reset();
+    ResetState();
 
     /* 位置反馈和 INS 使用同一个 10 ms 节拍。Chassis::Init() 已配置过一次，
      * 这里显式再配置一次，使 INS 可以作为独立周期模块被重新初始化。 */
@@ -110,6 +118,12 @@ void Class_INS::Init(const Struct_INS_Config &new_config)
 }
 
 void Class_INS::Reset()
+{
+    const Class_Lock_Guard lock(*this);
+    ResetState();
+}
+
+void Class_INS::ResetState()
 {
     wheel_position = {};
     gyro_position = {};
@@ -137,8 +151,86 @@ void Class_INS::Reset()
     complementary_used_gyro_sequence = 0U;
 }
 
+void Class_INS::Lock() const
+{
+    if (pose_mutex != nullptr)
+    {
+        (void)osMutexAcquire(pose_mutex, osWaitForever);
+    }
+}
+
+void Class_INS::Unlock() const
+{
+    if (pose_mutex != nullptr)
+    {
+        (void)osMutexRelease(pose_mutex);
+    }
+}
+
+bool Class_INS::StartCalibration()
+{
+    const Class_Lock_Guard lock(*this);
+
+    /* 函数 3 互补滤波位姿是底盘使用的世界系位姿，尚未有效时不记录。 */
+    if (!complementary_position.valid)
+    {
+        return false;
+    }
+
+    /* 记录当前世界坐标系相关的全部数据：函数 1/2/3 的三组位姿快照。 */
+    calibration.start_state.wheel = wheel_position;
+    calibration.start_state.gyro = gyro_position;
+    calibration.start_state.complementary = complementary_position;
+    calibration.active = true;
+    return true;
+}
+
+bool Class_INS::EndCalibration()
+{
+    const Class_Lock_Guard lock(*this);
+
+    if (!calibration.active)
+    {
+        return false;
+    }
+
+    /* 本次运行产生的误差：当前世界系位姿 - 校准开始时记录的世界系位姿。 */
+    const Struct_INS_Pose &start_pose = calibration.start_state.complementary;
+    const float error_x_m = complementary_position.x_m - start_pose.x_m;
+    const float error_y_m = complementary_position.y_m - start_pose.y_m;
+    const float error_yaw_rad =
+        WrapAngle(complementary_position.yaw_rad - start_pose.yaw_rad);
+
+    if (!std::isfinite(error_x_m) || !std::isfinite(error_y_m) ||
+        !std::isfinite(error_yaw_rad))
+    {
+        calibration.active = false;
+        return false;
+    }
+
+    /* 三组位姿同处一个世界系，统一扣除同一误差，等价于把世界系原点从
+     * 校准起点平移到校准终点，即用本次运行的累计误差校准原点位置。 */
+    wheel_position.x_m -= error_x_m;
+    wheel_position.y_m -= error_y_m;
+    wheel_position.yaw_rad = WrapAngle(wheel_position.yaw_rad - error_yaw_rad);
+
+    gyro_position.x_m -= error_x_m;
+    gyro_position.y_m -= error_y_m;
+    gyro_position.yaw_rad = WrapAngle(gyro_position.yaw_rad - error_yaw_rad);
+
+    complementary_position.x_m -= error_x_m;
+    complementary_position.y_m -= error_y_m;
+    complementary_position.yaw_rad =
+        WrapAngle(complementary_position.yaw_rad - error_yaw_rad);
+
+    calibration.active = false;
+    return true;
+}
+
 void Class_INS::UpdateWheelPosition()
 {
+    const Class_Lock_Guard lock(*this);
+
     if (!initialized.load(std::memory_order_acquire))
     {
         return;
@@ -234,6 +326,8 @@ void Class_INS::UpdateWheelPosition()
 
 void Class_INS::UpdateGyroPosition()
 {
+    const Class_Lock_Guard lock(*this);
+
     if (!initialized.load(std::memory_order_acquire))
     {
         return;
@@ -286,6 +380,8 @@ void Class_INS::UpdateGyroPosition()
 
 void Class_INS::UpdateComplementaryPosition()
 {
+    const Class_Lock_Guard lock(*this);
+
     if (!initialized.load(std::memory_order_acquire))
     {
         return;
@@ -339,21 +435,26 @@ void Class_INS::UpdateComplementaryPosition()
 
 Struct_INS_Pose Class_INS::GetWheelPosition() const
 {
+    const Class_Lock_Guard lock(*this);
     return wheel_position;
 }
 
 Struct_INS_Pose Class_INS::GetGyroPosition() const
 {
+    const Class_Lock_Guard lock(*this);
     return gyro_position;
 }
 
 Struct_INS_Pose Class_INS::GetComplementaryPosition() const
 {
+    const Class_Lock_Guard lock(*this);
     return complementary_position;
 }
 
 Struct_INS_State Class_INS::GetState() const
 {
+    const Class_Lock_Guard lock(*this);
+
     Struct_INS_State state{};
     state.wheel = wheel_position;
     state.gyro = gyro_position;
