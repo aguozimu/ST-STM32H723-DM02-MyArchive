@@ -20,13 +20,13 @@
 static constexpr uint16_t INS_UPDATE_PERIOD_MS = 10U;
 /** 航向互补滤波中陀螺仪的默认权重。 */
 static constexpr float INS_DEFAULT_GYRO_WEIGHT = 0.98f;
-
+ //0.98f;
 /** INS 机械参数。非直驱时 gear_ratio 表示电机转数 / 车轮转数。 */
 struct Struct_INS_Config
 {
-    float half_length_m = 0.15f;  //!< 底盘中心到前/后轮轴的距离，单位 m。
-    float half_width_m = 0.15f;   //!< 底盘中心到左/右轮接触中心的距离，单位 m。
-    float wheel_radius_m = 0.05f; //!< 麦轮有效滚动半径，单位 m。
+    float half_length_m = 0.075f;  //!< 底盘中心到前/后轮轴的距离，单位 m。
+    float half_width_m = 0.205f;   //!< 底盘中心到左/右轮接触中心的距离，单位 m。
+    float wheel_radius_m = 0.0375f; //!< 麦轮有效滚动半径，单位 m。
     float gear_ratio = 1.0f;      //!< 电机转数 / 车轮转数，直驱为 1。
     float gyro_weight = INS_DEFAULT_GYRO_WEIGHT; //!< 互补滤波的陀螺仪权重，范围 0~1。
 };

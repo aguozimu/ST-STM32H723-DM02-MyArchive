@@ -41,9 +41,9 @@ enum Enum_Chassis_Wheel : uint8_t
  */
 struct Struct_Chassis_Config
 {
-    float half_length = 0.15f;    //!< 底盘中心到前/后轮轴的距离，单位 m。
-    float half_width = 0.15f;     //!< 底盘中心到左/右轮的距离，单位 m。
-    float wheel_radius_m = 0.05f; //!< 麦轮有效滚动半径，单位 m。
+    float half_length = 0.075f;    //!< 底盘中心到前/后轮轴的距离，单位 m。
+    float half_width = 0.205f;     //!< 底盘中心到左/右轮的距离，单位 m。
+    float wheel_radius_m = 0.0375f; //!< 麦轮有效滚动半径，单位 m。
     float gear_ratio = 1.0f;      //!< 电机转数 / 车轮转数，直驱为 1。
 };
 
