@@ -276,11 +276,11 @@ extern "C" void Control_Task(void *argument)
                                       0.01f,
                                       -PI / 2.0f,
                                       0.01f);
-//    Vision_Process();
+   Vision_Process();
 
 
     APP_Chassis.RunToRelativePosition(0.0f,
-                                      -0.83f,
+                                      -0.85f,
                                       0.01f,
                                       0.0f,
                                       0.05f);
@@ -294,13 +294,13 @@ APP_Chassis.RunForSeconds(0,0,0,0.2f);
                                       0.01f,
                                       0.0f,
                                       0.05f);
-//    Vision_Process();
+   Vision_Process();
 
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   0.8f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      0.3f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
 
     // APP_Chassis.RunToRelativePosition(0.0f,
     //                                   3.2f,
