@@ -19,7 +19,7 @@
 /** INS 更新周期，单位 ms。 */
 static constexpr uint16_t INS_UPDATE_PERIOD_MS = 10U;
 /** 航向互补滤波中陀螺仪的默认权重。 */
-static constexpr float INS_DEFAULT_GYRO_WEIGHT = 0.98f;
+static constexpr float INS_DEFAULT_GYRO_WEIGHT = 0.998f;
  //0.98f;
 /** INS 机械参数。非直驱时 gear_ratio 表示电机转数 / 车轮转数。 */
 struct Struct_INS_Config

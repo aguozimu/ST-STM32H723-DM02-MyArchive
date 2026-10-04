@@ -289,7 +289,7 @@ APP_Chassis.RunForSeconds(0,0,0,0.2f);
 
 
     // osDelay(200);                                  
-    APP_Chassis.RunToRelativePosition(-1.0f,
+    APP_Chassis.RunToRelativePosition(-0.975f,
                                       0.0f,
                                       0.01f,
                                       0.0f,
@@ -301,17 +301,22 @@ APP_Chassis.RunForSeconds(0,0,0,0.2f);
                                       0.01f,
                                       0.0f,
                                       0.05f);
+   Vision_Process();
 
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   3.2f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
-    // APP_Chassis.RunToRelativePosition(1.5f,
-    //                                   0.0f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
+    APP_Chassis.RunToRelativePosition(0.0f,
+                                      0.225f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+
+
+
+    APP_Chassis.RunToRelativePosition(0.8f,
+                                      0.0f,
+                                      0.01f,
+                                      0.0f,
+                                      0.05f);
+  Vision_Process();                                     
 
     // APP_Chassis.RunToPosition(0.0f,
     //                           2.1f,
