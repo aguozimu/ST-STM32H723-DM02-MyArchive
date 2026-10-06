@@ -16,8 +16,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 namespace
-{
-constexpr uint16_t ZDT_ACCELERATION = 35U;
+{//35
+constexpr uint16_t ZDT_ACCELERATION = 100U;
 constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
 constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 1000U;
 constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 1000U;
@@ -242,7 +242,7 @@ extern "C" void Control_Task(void *argument)
                                       0.0f,
                                       0.01f,
                                       0.0f,
-                                      0.05f);
+                                      0.01f);
 
 
 
@@ -250,13 +250,13 @@ extern "C" void Control_Task(void *argument)
                                       -0.6f,
                                       0.01f,
                                       0.0f,
-                                      0.05f);
+                                      0.01f);
 
     APP_Chassis.RunToRelativePosition(-0.053f,
                                       -0.095f,
                                       0.01f,
                                       0.0f,
-                                      0.05f);
+                                      0.01f);
 
 
     APP_Chassis.RunToRelativePosition(0.0f,
@@ -269,7 +269,7 @@ extern "C" void Control_Task(void *argument)
                                       0.95f,
                                       0.01f,
                                       0.0f,
-                                      0.05f);
+                                      0.01f);
 
     APP_Chassis.RunToRelativePosition(0.0f,
                                       0.0f,
@@ -283,7 +283,7 @@ extern "C" void Control_Task(void *argument)
                                       -0.85f,
                                       0.01f,
                                       0.0f,
-                                      0.05f);
+                                      0.01f);
 
 APP_Chassis.RunForSeconds(0,0,0,0.2f);
 
@@ -293,7 +293,7 @@ APP_Chassis.RunForSeconds(0,0,0,0.2f);
                                       0.0f,
                                       0.01f,
                                       0.0f,
-                                      0.05f);
+                                      0.01f);
    Vision_Process();
 
     // APP_Chassis.RunToRelativePosition(0.0f,
@@ -303,7 +303,7 @@ APP_Chassis.RunForSeconds(0,0,0,0.2f);
     //                                   0.05f);
 
 
-      APP_Chassis.RunToPosition(-2.65f,
+      APP_Chassis.RunToPosition(-2.625f,
                                 1.35f,
                                  0.01f,
                                  0.0f,
@@ -351,15 +351,15 @@ APP_Chassis.RunForSeconds(0,0,0,0.2f);
     //                           0.0f,
     //                           0.05f);
 
-          APP_Chassis.RunToPosition(-0.5f,
-                                1.425f,
-                                 0.01f,
-                                 0.0f,
-                                 0.05f);  
+        //   APP_Chassis.RunToPosition(-0.5f,
+        //                         1.425f,
+        //                          0.01f,
+        //                          0.0f,
+        //                          0.05f);  
+APP_Chassis.RunForSeconds(25.0f,0,0,1.0f);
 
 
-
-          APP_Chassis.RunToPosition(-0.002f,
+          APP_Chassis.RunToPosition(0.05f,
                                 1.425f,
                                  0.01f,
                                  0.0f,
