@@ -16,12 +16,12 @@ constexpr uint8_t WIRELESS_FRAME_TAIL = 0xFEU;
 constexpr uint8_t FRAME_SOURCE_OFFSET = 3U;
 constexpr uint8_t FRAME_SEQUENCE_OFFSET = 4U;
 constexpr uint8_t FRAME_MODE_OFFSET = 5U;
-constexpr uint8_t FRAME_LEFT_SPEED_OFFSET = 7U;
-constexpr uint8_t FRAME_RIGHT_SPEED_OFFSET = 8U;
+constexpr uint8_t FRAME_X_VELOCITY_OFFSET = 7U;
+constexpr uint8_t FRAME_Y_VELOCITY_OFFSET = 8U;
 constexpr uint8_t FRAME_HEIGHT_TARGET_OFFSET = 9U;
 constexpr uint8_t FRAME_HEIGHT_SPEED_OFFSET = 11U;
 constexpr uint8_t FRAME_ANGLE_TARGET_OFFSET = 12U;
-constexpr uint8_t FRAME_ANGLE_SPEED_OFFSET = 14U;
+constexpr uint8_t FRAME_Z_ANGULAR_VELOCITY_OFFSET = 14U;
 
 uint8_t receive_frame[WIRELESS_FRAME_SIZE] = {};
 uint8_t receive_length = 0U;
@@ -59,14 +59,15 @@ bool DecodeFrame(const uint8_t *data, Struct_Remote_Control_Frame *frame)
     frame->source = data[FRAME_SOURCE_OFFSET];
     frame->sequence = data[FRAME_SEQUENCE_OFFSET];
     frame->mode = static_cast<Enum_Remote_Mode>(data[FRAME_MODE_OFFSET]);
-    frame->left_speed = DecodeInt8(data[FRAME_LEFT_SPEED_OFFSET]);
-    frame->right_speed = DecodeInt8(data[FRAME_RIGHT_SPEED_OFFSET]);
+    frame->x_velocity_raw = DecodeInt8(data[FRAME_X_VELOCITY_OFFSET]);
+    frame->y_velocity_raw = DecodeInt8(data[FRAME_Y_VELOCITY_OFFSET]);
     frame->height_target = static_cast<uint16_t>(
         (static_cast<uint16_t>(data[FRAME_HEIGHT_TARGET_OFFSET]) << 8U) |
         data[FRAME_HEIGHT_TARGET_OFFSET + 1U]);
     frame->height_speed = data[FRAME_HEIGHT_SPEED_OFFSET];
     frame->angle_target = DecodeInt16BigEndian(&data[FRAME_ANGLE_TARGET_OFFSET]);
-    frame->angle_speed = DecodeInt8(data[FRAME_ANGLE_SPEED_OFFSET]);
+    frame->z_angular_velocity_raw =
+        DecodeInt8(data[FRAME_Z_ANGULAR_VELOCITY_OFFSET]);
     return true;
 }
 

@@ -9,6 +9,7 @@
 #include "fdcan.h"
 #include "cmsis_os2.h"
 
+#include <cmath>
 #include <cstdint>
 
 namespace
@@ -18,8 +19,14 @@ constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
 constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 1000U;
 constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 1000U;
 constexpr uint32_t REMOTE_FRAME_TIMEOUT_TICKS = 100U;
+constexpr uint32_t REMOTE_CONTROL_PERIOD_TICKS = 10U;
 constexpr float CHASSIS_WHEEL_RADIUS_M = 0.0375f;
 constexpr float CHASSIS_GEAR_RATIO = 1.0f;
+// 协议只提供有符号 int8 原始量；按实际手柄标定填写每计数对应的物理速度。
+// 比例未配置前保持 0，避免把原始字节误当成 m/s 或 rad/s 直接驱动车轮。
+constexpr float REMOTE_X_MPS_PER_COUNT = 0.0f;
+constexpr float REMOTE_Y_MPS_PER_COUNT = 0.0f;
+constexpr float REMOTE_Z_RAD_S_PER_COUNT = 0.0f;
 
 void InitChassis(void)
 {
@@ -56,37 +63,37 @@ void InitChassis(void)
     APP_INS.Init(ins_config);
 }
 
-void ProcessRemoteFrame(const Struct_Remote_Control_Frame &frame,
-                        bool &chassis_stopped)
+void StopChassis(bool &chassis_stopped)
 {
-    switch (frame.mode)
+    if (!chassis_stopped)
     {
-    case Enum_Remote_Mode::STOP:
-        if (!chassis_stopped)
-        {
-            APP_Chassis.Stop();
-            chassis_stopped = true;
-        }
-        break;
-
-    case Enum_Remote_Mode::SPEED:
-        // 原始 left/right/angle speed 已解析；单位映射和小陀螺固定角速度待手动配置。
-        chassis_stopped = false;
-        break;
-
-    case Enum_Remote_Mode::RA:
-        // angle/height 字段已解析；RA 模式的动作映射暂不猜测。
-        chassis_stopped = false;
-        break;
-
-    default:
-        if (!chassis_stopped)
-        {
-            APP_Chassis.Stop();
-            chassis_stopped = true;
-        }
-        break;
+        APP_Chassis.Stop();
     }
+    chassis_stopped = true;
+}
+
+bool ApplySmallGyroFrame(const Struct_Remote_Control_Frame &frame)
+{
+    const Struct_INS_Pose world_pose = APP_INS.GetComplementaryPosition();
+    if (!world_pose.valid || !std::isfinite(world_pose.yaw_rad))
+    {
+        return false;
+    }
+
+    const float world_vx =
+        static_cast<float>(frame.x_velocity_raw) * REMOTE_X_MPS_PER_COUNT;
+    const float world_vy =
+        static_cast<float>(frame.y_velocity_raw) * REMOTE_Y_MPS_PER_COUNT;
+    const float omega = static_cast<float>(frame.z_angular_velocity_raw) *
+                        REMOTE_Z_RAD_S_PER_COUNT;
+
+    // 与 Class_Chassis::RunToPosition() 使用相同的世界系到车体系变换。
+    const float cos_yaw = std::cos(world_pose.yaw_rad);
+    const float sin_yaw = std::sin(world_pose.yaw_rad);
+    const float body_vx = cos_yaw * world_vx + sin_yaw * world_vy;
+    const float body_vy = -sin_yaw * world_vx + cos_yaw * world_vy;
+    APP_Chassis.SetVelocity(body_vx, body_vy, omega);
+    return true;
 }
 } // namespace
 
@@ -101,29 +108,52 @@ extern "C" void Control_Task(void *argument)
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
     APP_Chassis.Stop();
     bool chassis_stopped = true;
-    bool received_frame = false;
+    bool small_gyro_active = false;
+    Struct_Remote_Control_Frame small_gyro_frame{};
     uint32_t last_frame_tick = osKernelGetTickCount();
+    uint32_t last_control_tick = last_frame_tick;
 
     for (;;)
     {
         Struct_Remote_Control_Frame frame{};
         if (Communication_TakeLatestFrame(&frame))
         {
-            received_frame = true;
             last_frame_tick = osKernelGetTickCount();
-            ProcessRemoteFrame(frame, chassis_stopped);
+            if (frame.mode == Enum_Remote_Mode::SMALL_GYRO)
+            {
+                small_gyro_frame = frame;
+                small_gyro_active = true;
+            }
+            else
+            {
+                // mode 0/1/2 和未识别模式均按停止处理。
+                small_gyro_active = false;
+                StopChassis(chassis_stopped);
+            }
         }
 
         const uint32_t now = osKernelGetTickCount();
-        if (received_frame &&
+        if (small_gyro_active &&
             ((now - last_frame_tick) >= REMOTE_FRAME_TIMEOUT_TICKS))
         {
-            if (!chassis_stopped)
+            small_gyro_active = false;
+            StopChassis(chassis_stopped);
+        }
+
+        if (small_gyro_active &&
+            ((now - last_control_tick) >= REMOTE_CONTROL_PERIOD_TICKS))
+        {
+            last_control_tick = now;
+            if (ApplySmallGyroFrame(small_gyro_frame))
             {
-                APP_Chassis.Stop();
-                chassis_stopped = true;
+                chassis_stopped = false;
             }
-            received_frame = false;
+            else
+            {
+                // INS 航向尚未有效时不执行世界系速度命令。
+                small_gyro_active = false;
+                StopChassis(chassis_stopped);
+            }
         }
 
         osDelay(1U);

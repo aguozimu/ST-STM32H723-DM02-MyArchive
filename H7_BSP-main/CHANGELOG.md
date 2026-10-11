@@ -20,6 +20,20 @@
 - `mode=0` 按停止处理；`mode=1/2` 及小陀螺速度映射暂留，当前不会根据原始速度字段驱动车轮。
 - 按要求未编译、未烧录；本条记录仅反映源码和配置修改，构建及实机收发均未验证。
 
+## 2026-10-11 15:23 Asia/Shanghai
+
+### 已调整
+
+- `User_File/Application/Communication/Com.cpp/.h` 增加 `mode=3` 小陀螺枚举，并将字节 7、8、14 明确命名为 x 平移、y 平移、z 角速度有符号原始值。
+- `User_File/Task/Control_Task.cpp` 仅在 `mode=3` 时使用该组数据；每 10 ms 按 INS 当前 yaw 使用底盘现有的世界系到车体系变换后调用 `SetVelocity()`。`mode=0/1/2`、未知模式、100 ms 无新帧或 INS 航向无效时停止底盘。
+- 原始计数到 m/s、rad/s 的比例留在 `REMOTE_X_MPS_PER_COUNT`、`REMOTE_Y_MPS_PER_COUNT` 和 `REMOTE_Z_RAD_S_PER_COUNT`，当前默认 0，等待按手柄实际标定手动配置。
+- `README.md` 更新无线协议和 mode3 行为说明。
+
+### 影响与验证
+
+- 未修改 `.ioc`、手柄发送端或硬件引脚；世界系 x/y 采用现有 INS 航向及底盘坐标变换。
+- 已静态检查协议字段偏移、模式分流、超时停止和坐标变换与现有 `RunToPosition()` 公式一致；未编译、未烧录，实机方向/比例/控制效果未验证。
+
 ## 2026-06-01
 
 ### 已修复
