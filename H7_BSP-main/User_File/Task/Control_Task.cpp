@@ -30,9 +30,9 @@ constexpr uint64_t CHASSIS_SPEED_FEEDBACK_MAX_AGE_US = 30000U;
 constexpr float CHASSIS_WHEEL_RADIUS_M = 0.0375f;
 constexpr float CHASSIS_GEAR_RATIO = 1.0f;
 constexpr float CHASSIS_MAX_TRANSLATION_SPEED_MPS = 0.75f;
-constexpr float CHASSIS_MAX_ANGULAR_SPEED_RAD_S = 2.0f;
-constexpr float CHASSIS_MAX_LINEAR_ACCELERATION_MPS2 = 0.5f;
-constexpr float CHASSIS_MAX_ANGULAR_ACCELERATION_RAD_S2 = 3.0f;
+constexpr float CHASSIS_MAX_ANGULAR_SPEED_RAD_S = 4.0f;
+constexpr float CHASSIS_MAX_LINEAR_ACCELERATION_MPS2 = 2.0f;
+constexpr float CHASSIS_MAX_ANGULAR_ACCELERATION_RAD_S2 = 6.5f;
 // 闭环初始值：实机确认方向、单位和响应后再按手感调整。
 constexpr float YAW_HOLD_KP_RAD_S_PER_RAD = 2.0f;
 constexpr float VELOCITY_PI_KP = 0.5f;
@@ -44,9 +44,9 @@ constexpr float OMEGA_PI_INTEGRAL_LIMIT_RAD_S = 0.5f;
 constexpr float CONTROL_DT_MAX_S = 0.05f;
 constexpr float CONTROL_PI_F = 3.14159265358979f;
 // 协议只提供有符号 int8 原始量；按实际手柄标定填写每计数对应的物理速度。
-constexpr float REMOTE_X_MPS_PER_COUNT = 0.01f;
-constexpr float REMOTE_Y_MPS_PER_COUNT = 0.01f;
-constexpr float REMOTE_Z_RAD_S_PER_COUNT = 0.05f;
+constexpr float REMOTE_X_MPS_PER_COUNT = 0.005f;
+constexpr float REMOTE_Y_MPS_PER_COUNT = 0.005f;
+constexpr float REMOTE_Z_RAD_S_PER_COUNT = 1.0f;
 
 struct SmallGyroControllerState
 {
