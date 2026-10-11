@@ -4,34 +4,38 @@ set(CMAKE_SYSTEM_PROCESSOR          arm)
 set(CMAKE_C_COMPILER_ID GNU)
 set(CMAKE_CXX_COMPILER_ID GNU)
 
-# GNU Tools for STM32 installation. It can still be overridden from the
-# command line with -DARM_TOOLCHAIN_DIR=<path>.
-set(ARM_TOOLCHAIN_DIR
-    "E:/CubeCLT/STM32CubeCLT_1.22.0/GNU-tools-for-STM32/bin"
-    CACHE PATH "GNU Arm Embedded toolchain binary directory")
+# Resolve the GNU Arm toolchain from an explicit CMake cache value, the
+# ARM_TOOLCHAIN_DIR environment variable, or the normal executable search path.
+if(NOT ARM_TOOLCHAIN_DIR AND DEFINED ENV{ARM_TOOLCHAIN_DIR})
+    set(ARM_TOOLCHAIN_DIR "$ENV{ARM_TOOLCHAIN_DIR}"
+        CACHE PATH "GNU Arm Embedded toolchain binary directory" FORCE)
+else()
+    set(ARM_TOOLCHAIN_DIR "${ARM_TOOLCHAIN_DIR}"
+        CACHE PATH "GNU Arm Embedded toolchain binary directory")
+endif()
 set(TOOLCHAIN_PREFIX                arm-none-eabi-)
 
 find_program(CMAKE_C_COMPILER
     NAMES ${TOOLCHAIN_PREFIX}gcc
     HINTS "${ARM_TOOLCHAIN_DIR}"
-    REQUIRED NO_DEFAULT_PATH)
+    REQUIRED)
 set(CMAKE_ASM_COMPILER              "${CMAKE_C_COMPILER}")
 find_program(CMAKE_CXX_COMPILER
     NAMES ${TOOLCHAIN_PREFIX}g++
     HINTS "${ARM_TOOLCHAIN_DIR}"
-    REQUIRED NO_DEFAULT_PATH)
+    REQUIRED)
 find_program(CMAKE_LINKER
     NAMES ${TOOLCHAIN_PREFIX}g++
     HINTS "${ARM_TOOLCHAIN_DIR}"
-    REQUIRED NO_DEFAULT_PATH)
+    REQUIRED)
 find_program(CMAKE_OBJCOPY
     NAMES ${TOOLCHAIN_PREFIX}objcopy
     HINTS "${ARM_TOOLCHAIN_DIR}"
-    REQUIRED NO_DEFAULT_PATH)
+    REQUIRED)
 find_program(CMAKE_SIZE
     NAMES ${TOOLCHAIN_PREFIX}size
     HINTS "${ARM_TOOLCHAIN_DIR}"
-    REQUIRED NO_DEFAULT_PATH)
+    REQUIRED)
 
 set(CMAKE_EXECUTABLE_SUFFIX_ASM     ".elf")
 set(CMAKE_EXECUTABLE_SUFFIX_C       ".elf")

@@ -130,6 +130,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}/SystemView/FreeRTOS/Config/SEGGER_SYSVIEW_Config_FreeRTOS.c
         ${CMAKE_CURRENT_LIST_DIR}/SystemView/SEGGER/SEGGER_RTT_ASM_ARMv7M.S
         ${CMAKE_CURRENT_LIST_DIR}/User_File/System/Init/Init.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/User_File/Application/Communication/Com.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/InsTask.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/TransportTask.cpp
         ${CMAKE_CURRENT_LIST_DIR}/User_File/Task/CanTxTask.cpp

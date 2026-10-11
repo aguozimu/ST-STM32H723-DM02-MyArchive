@@ -1,36 +1,27 @@
 /**
  * @file Control_Task.cpp
- * @brief 初始化底盘并执行一次最简单的坐标位置移动。
+ * @brief 初始化底盘并接收手柄无线控制帧；底盘速度映射留作后续配置。
  */
 
- 
-#include "bsp_uart.h"
-#include "user_task.h"
+#include "Com.h"
 #include "Chassis.h"
 #include "INS.h"
-
-
+#include "fdcan.h"
+#include "cmsis_os2.h"
 
 #include <cstdint>
 
-#include "FreeRTOS.h"
-#include "task.h"
 namespace
-{//35
+{
 constexpr uint16_t ZDT_ACCELERATION = 100U;
 constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
 constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 1000U;
 constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 1000U;
+constexpr uint32_t REMOTE_FRAME_TIMEOUT_TICKS = 100U;
 constexpr float CHASSIS_WHEEL_RADIUS_M = 0.0375f;
 constexpr float CHASSIS_GEAR_RATIO = 1.0f;
-volatile bool uart10_rx_ready = false;
-volatile uint16_t uart10_rx_length = 0U;
-uint8_t uart10_rx_BUFF[UART_BUFFER_SIZE];
-uint8_t vision_frame[UART_BUFFER_SIZE];
 
-
-
-void InitChassis()
+void InitChassis(void)
 {
     Struct_Chassis_Config chassis_config{};
     chassis_config.wheel_radius_m = CHASSIS_WHEEL_RADIUS_M;
@@ -38,10 +29,10 @@ void InitChassis()
 
     Struct_Chassis_Motor_Config motor_config[CHASSIS_WHEEL_COUNT]{};
     const int8_t motor_polarity[CHASSIS_WHEEL_COUNT] = {
-        1,  // 1 号电机：左前轮，正向
-        -1, // 2 号电机：右前轮，反向
-        1,  // 3 号电机：左后轮，正向
-        -1, // 4 号电机：右后轮，反向
+        1,  // 左前轮正向
+        -1, // 右前轮反向
+        1,  // 左后轮正向
+        -1, // 右后轮反向
     };
 
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
@@ -57,7 +48,6 @@ void InitChassis()
 
     APP_Chassis.Init(chassis_config, motor_config);
 
-    /* INS 平移只使用轮式里程计，BMI088 在函数 2 中仅提供 Yaw 融合。 */
     Struct_INS_Config ins_config{};
     ins_config.half_length_m = chassis_config.half_length;
     ins_config.half_width_m = chassis_config.half_width;
@@ -65,314 +55,77 @@ void InitChassis()
     ins_config.gear_ratio = chassis_config.gear_ratio;
     APP_INS.Init(ins_config);
 }
-    /*串口10接收回调函数*/
-void UART10_RxCallback(uint8_t *buffer, uint16_t length)
-{
-    if (length > UART_BUFFER_SIZE)
-    {
-        length = UART_BUFFER_SIZE;
-    }
-    /*复制内容*/
-    memcpy(uart10_rx_BUFF, buffer, length);
-    uart10_rx_length = length;
-    uart10_rx_ready = true;
-}
-/* 状态定义 */
-enum VisionMode
-{
-    V_REF,       // 空闲
-    V_WAIT,       // 已发 YES，等待视觉状态
-    V_NOO,        // NOO 移动
-    V_RES,        // RES 校准
-    V_YES           // 接收到YES准备结束
-};
 
-static void Vision_Send(const char *data, uint8_t length)
+void ProcessRemoteFrame(const Struct_Remote_Control_Frame &frame,
+                        bool &chassis_stopped)
 {
-    memcpy(USART10_Manage_Object.Tx_Buffer, data, length);
-    UART_Transmit_Data(&huart10, USART10_Manage_Object.Tx_Buffer, length);
-}
-
-static void Vision_Process(void)
-{
-    static VisionMode vision_mode = V_REF;
-    Vision_Send("YES", 3U);
-    vision_mode = V_WAIT;
-    for (;;)
+    switch (frame.mode)
     {
-        if (uart10_rx_ready)
+    case Enum_Remote_Mode::STOP:
+        if (!chassis_stopped)
         {
-
-            taskENTER_CRITICAL();
-            uart10_rx_ready = false;
-            const uint16_t length = uart10_rx_length;
-            memcpy(vision_frame, uart10_rx_BUFF, length);
-            taskEXIT_CRITICAL();
-            if (memcmp(vision_frame, "REF", 3U) == 0)
-            {
-                vision_mode = V_REF;
-                continue;
-            }
-            else if (memcmp(vision_frame, "NOO", 3U) == 0)
-            {
-
-                for (;;)
-                {
-
-                    if (uart10_rx_ready)
-                    {
-                        taskENTER_CRITICAL();
-                        uart10_rx_ready = false;
-                        const uint16_t length = uart10_rx_length;
-                        memcpy(vision_frame, uart10_rx_BUFF, length);
-                        taskEXIT_CRITICAL();
-                        float vx = 0.0f;
-                        float vy = 0.0f;
-                        float wz = 0.0f;
-
-                        /* STM32 小端，直接 memcpy 最简单 */
-                        memcpy(&vx, &vision_frame[4], 4U);
-                        memcpy(&vy, &vision_frame[9], 4U);
-                        memcpy(&wz, &vision_frame[14], 4U);
-                        APP_Chassis.SetVelocity(vx, vy, wz);
-                        if (memcmp(vision_frame, "YES", 3U) == 0)
-                        {
-
-                            vision_mode = V_YES;
-                            break;
-                        }
-                        else if (memcmp(vision_frame, "REF", 3U) == 0)
-                        {
-                            vision_mode = V_REF;
-                            break;
-                        }
-                    }
-                    osDelay(1U);
-                }
-            }
-
-            else if (memcmp(vision_frame, "RES", 3U) == 0)
-            {
-                vision_mode = V_RES;
-                if (APP_INS.StartCalibration())
-                {
-
-                    for (;;)
-                    {
-
-                        if (uart10_rx_ready)
-                        {
-                            taskENTER_CRITICAL();
-                            uart10_rx_ready = false;
-                            const uint16_t length = uart10_rx_length;
-                            memcpy(vision_frame, uart10_rx_BUFF, length);
-                            taskEXIT_CRITICAL();
-                            float vx = 0.0f;
-                            float vy = 0.0f;
-                            float wz = 0.0f;
-
-                            /* STM32 小端，直接 memcpy 最简单 */
-                            memcpy(&vx, &vision_frame[4], 4U);
-                            memcpy(&vy, &vision_frame[9], 4U);
-                            memcpy(&wz, &vision_frame[14], 4U);
-                            APP_Chassis.SetVelocity(vx, vy, wz);
-                            if (memcmp(vision_frame, "YES", 3U) == 0)
-                            {
-
-                                vision_mode = V_YES;
-                                break;
-                            }
-                            else if (memcmp(vision_frame, "REF", 3U) == 0)
-                            {
-                                vision_mode = V_REF;
-                                break;
-                            }
-                        }
-                        osDelay(1U);
-                    }
-
-                    APP_INS.EndCalibration();
-                }
-            }
-            else if (memcmp(vision_frame, "YES", 3U) == 0)
-            {
-
-                vision_mode = V_YES;
-            }
+            APP_Chassis.Stop();
+            chassis_stopped = true;
         }
-        if (vision_mode == V_YES)
+        break;
+
+    case Enum_Remote_Mode::SPEED:
+        // 原始 left/right/angle speed 已解析；单位映射和小陀螺固定角速度待手动配置。
+        chassis_stopped = false;
+        break;
+
+    case Enum_Remote_Mode::RA:
+        // angle/height 字段已解析；RA 模式的动作映射暂不猜测。
+        chassis_stopped = false;
+        break;
+
+    default:
+        if (!chassis_stopped)
         {
-            Vision_Send("OK", 2U);
-            vision_mode = V_REF;
-            break;
-        };
-
-        osDelay(1U);
+            APP_Chassis.Stop();
+            chassis_stopped = true;
+        }
+        break;
     }
 }
-
-/*结束等待*/
-[[noreturn]] void HoldTask()
-{
-    for (;;)
-    {
-        osDelay(1000U);
-    }
-}
-
 } // namespace
 
 extern "C" void Control_Task(void *argument)
 {
     (void)argument;
-    /*设置当前任务优先级*/
     osThreadSetPriority(osThreadGetId(), osPriorityHigh1);
-    /*初始化串口10（视觉通讯）*/
-    UART_Init(&huart10, UART10_RxCallback);
-    /*等待电机启动*/
     osDelay(ZDT_BOOT_DELAY_TICKS);
+
     InitChassis();
     APP_Chassis.Enable();
     osDelay(ZDT_ENABLE_SETTLE_TICKS);
     APP_Chassis.Stop();
+    bool chassis_stopped = true;
+    bool received_frame = false;
+    uint32_t last_frame_tick = osKernelGetTickCount();
 
-    Vision_Process();
+    for (;;)
+    {
+        Struct_Remote_Control_Frame frame{};
+        if (Communication_TakeLatestFrame(&frame))
+        {
+            received_frame = true;
+            last_frame_tick = osKernelGetTickCount();
+            ProcessRemoteFrame(frame, chassis_stopped);
+        }
 
-    APP_Chassis.RunToRelativePosition(-0.71f,
-                                      0.0f,
-                                      0.01f,
-                                      0.0f,
-                                      0.01f);
+        const uint32_t now = osKernelGetTickCount();
+        if (received_frame &&
+            ((now - last_frame_tick) >= REMOTE_FRAME_TIMEOUT_TICKS))
+        {
+            if (!chassis_stopped)
+            {
+                APP_Chassis.Stop();
+                chassis_stopped = true;
+            }
+            received_frame = false;
+        }
 
-
-
-    APP_Chassis.RunToRelativePosition(0.0f,
-                                      -0.6f,
-                                      0.01f,
-                                      0.0f,
-                                      0.01f);
-
-    APP_Chassis.RunToRelativePosition(-0.053f,
-                                      -0.095f,
-                                      0.01f,
-                                      0.0f,
-                                      0.01f);
-
-
-    APP_Chassis.RunToRelativePosition(0.0f,
-                                      0.0f,
-                                      0.01f,
-                                      PI / 2.0f,
-                                      0.01f);
-
-    APP_Chassis.RunToRelativePosition(0.0f,
-                                      0.95f,
-                                      0.01f,
-                                      0.0f,
-                                      0.01f);
-
-    APP_Chassis.RunToRelativePosition(0.0f,
-                                      0.0f,
-                                      0.01f,
-                                      -PI / 2.0f,
-                                      0.01f);
-   Vision_Process();
-
-
-    APP_Chassis.RunToRelativePosition(0.0f,
-                                      -0.85f,
-                                      0.01f,
-                                      0.0f,
-                                      0.01f);
-
-APP_Chassis.RunForSeconds(0,0,0,0.2f);
-
-
-    // osDelay(200);                                  
-    APP_Chassis.RunToRelativePosition(-0.975f,
-                                      0.0f,
-                                      0.01f,
-                                      0.0f,
-                                      0.01f);
-   Vision_Process();
-
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   0.3f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
-
-
-      APP_Chassis.RunToPosition(-2.625f,
-                                1.35f,
-                                 0.01f,
-                                 0.0f,
-                                 0.05f);    
-    
-    
-    // APP_Chassis.RunToPosition(0.0f,
-    //                           0.0f,
-    //                           0.01f,
-    //                           0.0f,
-    //                           0.05f);
-
-
-   Vision_Process();
-
-    // APP_Chassis.RunToRelativePosition(0.0f,
-    //                                   0.225f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
-    APP_Chassis.RunToRelativePosition(0.0f,
-                                      0.08f,
-                                      0.01f,
-                                      0.0f,
-                                      0.05f);
-
-
-    APP_Chassis.RunToRelativePosition(0.7f,
-                                      0.0f,
-                                      0.01f,
-                                      0.0f,
-                                      0.05f);
-  Vision_Process();     
-  
-  
-    //   APP_Chassis.RunToRelativePosition(1.0f,
-    //                                   0.0f,
-    //                                   0.01f,
-    //                                   0.0f,
-    //                                   0.05f);
-
-    // APP_Chassis.RunToPosition(0.0f,
-    //                           2.1f,
-    //                           0.01f,
-    //                           0.0f,
-    //                           0.05f);
-
-        //   APP_Chassis.RunToPosition(-0.5f,
-        //                         1.425f,
-        //                          0.01f,
-        //                          0.0f,
-        //                          0.05f);  
-APP_Chassis.RunForSeconds(25.0f,0,0,1.0f);
-
-
-          APP_Chassis.RunToPosition(0.05f,
-                                1.425f,
-                                 0.01f,
-                                 0.0f,
-                                 0.05f);   
-    // GOHome
-    // APP_Chassis.RunToPosition(0.0f,
-    //                           0.0f,
-    //                           0.01f,
-    //                           0.0f,
-    //                           0.05f);
-
-    APP_Chassis.Stop();
-
-
-    HoldTask();
+        osDelay(1U);
+    }
 }

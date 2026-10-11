@@ -4,6 +4,22 @@
 
 格式遵循“日期 + 分类”的方式维护。当前项目尚未形成正式版本号，因此先使用日期条目。
 
+## 2026-10-11 15:00 Asia/Shanghai
+
+### 已调整
+
+- `CMakePresets.json` 移除本机 E 盘的工具链和 Ninja 绝对路径；`cmake/gcc-arm-none-eabi.cmake` 改为从 `ARM_TOOLCHAIN_DIR` 环境变量或 PATH 查找 Arm GNU 工具链。
+- `User_File/Application/Communication/Com.cpp/.h` 新增 16 字节无线接收帧组帧与字段解析，支持跨 DMA 空闲回调的分段帧和连续帧；解析结果以单帧邮箱交给任务，保留原始值，不在接收层做速度/单位映射。
+- `User_File/System/Init/Init.cpp` 将 USART1 回调绑定到无线帧解析器；`CMakeLists.txt` 注册 `Com.cpp`。
+- `User_File/Task/Control_Task.cpp` 移除视觉握手和固定运动路线，改为接收手柄模式并保留后续动作映射入口；无帧 100 ms 后停止底盘。
+- `README.md` 更新构建环境配置、USART1 无线接收说明和本次未构建状态。
+
+### 影响与验证
+
+- 没有修改 `.ioc`、手柄发送端或硬件引脚配置。手柄模式由发送端写入帧的 mode 字节；该发送端源码不在当前仓库。
+- `mode=0` 按停止处理；`mode=1/2` 及小陀螺速度映射暂留，当前不会根据原始速度字段驱动车轮。
+- 按要求未编译、未烧录；本条记录仅反映源码和配置修改，构建及实机收发均未验证。
+
 ## 2026-06-01
 
 ### 已修复

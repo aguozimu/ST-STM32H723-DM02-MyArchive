@@ -32,7 +32,7 @@ extern "C" void System_Init(void)
     HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
   
 
-    UART_Init(&huart1, nullptr);
+    UART_Init(&huart1, Communication_Callback);
     UART_Init(&huart2, nullptr);
     UART_Init(&huart3, nullptr);
     UART_Init(&huart4, nullptr);
