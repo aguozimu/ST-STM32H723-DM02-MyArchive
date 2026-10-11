@@ -27,8 +27,24 @@ struct Struct_Remote_Control_Frame
     int8_t z_angular_velocity_raw = 0;
 };
 
-/** USART1 的 DMA 空闲接收回调；只组帧并发布最新有效帧。 */
+/** Receive counters and the last valid wireless frame, used by VOFA. */
+struct Struct_Remote_Control_Debug_State
+{
+    uint32_t rx_bytes = 0U;
+    uint32_t valid_frames = 0U;
+    uint32_t invalid_frames = 0U;
+    uint32_t last_frame_tick_ms = 0U;
+    uint8_t mode = 0U;
+    int8_t x_velocity_raw = 0;
+    int8_t y_velocity_raw = 0;
+    int8_t z_angular_velocity_raw = 0;
+};
+
+/** USART10 DMA idle receive callback. */
 void Communication_Callback(uint8_t *buffer, uint16_t length);
+
+/** Copy the receive diagnostics snapshot without consuming the control frame. */
+void Communication_GetDebugState(Struct_Remote_Control_Debug_State *state);
 
 /** 在任务上下文取走最新有效帧；没有新帧时返回 false。 */
 bool Communication_TakeLatestFrame(Struct_Remote_Control_Frame *frame);

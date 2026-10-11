@@ -2,6 +2,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "stm32h7xx_hal.h"
 
 #include <cstddef>
 #include <string.h>
@@ -27,6 +28,7 @@ uint8_t receive_frame[WIRELESS_FRAME_SIZE] = {};
 uint8_t receive_length = 0U;
 Struct_Remote_Control_Frame latest_frame{};
 volatile bool latest_frame_ready = false;
+Struct_Remote_Control_Debug_State debug_state{};
 
 int8_t DecodeInt8(uint8_t raw)
 {
@@ -114,10 +116,17 @@ void ProcessByte(uint8_t byte)
     {
         latest_frame = decoded_frame;
         latest_frame_ready = true;
+        debug_state.mode = static_cast<uint8_t>(decoded_frame.mode);
+        debug_state.x_velocity_raw = decoded_frame.x_velocity_raw;
+        debug_state.y_velocity_raw = decoded_frame.y_velocity_raw;
+        debug_state.z_angular_velocity_raw = decoded_frame.z_angular_velocity_raw;
+        debug_state.last_frame_tick_ms = HAL_GetTick();
+        debug_state.valid_frames++;
         receive_length = 0U;
         return;
     }
 
+    debug_state.invalid_frames++;
     PreservePossibleFrameStart();
 }
 } // namespace
@@ -129,10 +138,24 @@ void Communication_Callback(uint8_t *buffer, uint16_t length)
         return;
     }
 
+    debug_state.rx_bytes += length;
+
     for (uint16_t i = 0U; i < length; ++i)
     {
         ProcessByte(buffer[i]);
     }
+}
+
+void Communication_GetDebugState(Struct_Remote_Control_Debug_State *state)
+{
+    if (state == nullptr)
+    {
+        return;
+    }
+
+    taskENTER_CRITICAL();
+    *state = debug_state;
+    taskEXIT_CRITICAL();
 }
 
 bool Communication_TakeLatestFrame(Struct_Remote_Control_Frame *frame)

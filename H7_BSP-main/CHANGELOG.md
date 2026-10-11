@@ -4,6 +4,14 @@
 
 格式遵循“日期 + 分类”的方式维护。当前项目尚未形成正式版本号，因此先使用日期条目。
 
+## 2026-10-11 16:10 Asia/Shanghai
+
+### 已修复
+
+- `User_File/System/Init/Init.cpp` 将无线接收回调从 USART1 改到实际接线的 USART10，并将 USART1 恢复为普通 UART。
+- `User_File/Task/TransportTask.cpp` 在现有 UART7 VOFA+ justfloat 帧后追加 0~15 号无线诊断通道，包含接收字节数、帧计数、模式、x/y/z 原值、帧年龄、控制激活、INS 有效性、电机在线位掩码和当前速度比例。
+- 确认过 `-DDEBUG` 构建通过，FLASH 使用 `129036 B / 1 MB`。
+
 ## 2026-10-11 15:00 Asia/Shanghai
 
 ### 已调整

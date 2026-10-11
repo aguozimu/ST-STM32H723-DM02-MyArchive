@@ -16,7 +16,7 @@ STM32H723ZG 板级支持包工程，面向 RoboMaster/机器人控制场景。�
 | DMA 缓冲区 | 已修复关键布局 | SPI/ADC 管理对象放入 `.dma_buffer`，链接到 RAM_D1，MPU 配置为 non-cacheable |
 | TransportTask | 骨架完成 | 当前只初始化 USB Device 并周期让出 CPU，尚无协议和数据收发 |
 | CAN/FDCAN BSP | 已实现 | `bsp_can` v2 双通道发送架构：周期通道（`CAN_Tx_Perform` + `BSP_CAN_SendPer`）+ 异步队列（`CAN_Tx_Submit` + `BSP_CAN_SendAsync`），`CanTxTask` 1ms 周期执行。已修复 FDCAN2 Message RAM 重叠（`MessageRAMOffset` 0→853，三路均匀三等分 0/853/1706）、`BSP_CAN_SendMsg` 缺 `len==0` 保护、`CanTxTask` 的 `vTaskDelayUntil` 周期写法（`xLastWakeTime` 移出循环）。待确认：FDCAN2 `AutoRetransmission=DISABLE` 与 FDCAN1/3 不一致 |
-| UART BSP | USART1 已接入无线接收 | USART1 使用现有双缓冲 DMA + IDLE 接收，在 `System_Init()` 注册 16 字节手柄帧解析回调；不改 `.ioc`。`mode=3` 接入小陀螺世界系速度命令，物理速度比例留在 `Control_Task` 配置 |
+| UART BSP | USART10 已接入无线接收 | USART10 使用现有双缓冲 DMA + IDLE 接收，在 `System_Init()` 注册 16 字节手柄帧解析回调；不改 `.ioc`。`mode=3` 接入小陀螺世界系速度命令，物理速度比例留在 `Control_Task` 配置 |
 | 达妙电机 | 驱动已接入 | `Class_DMMotor` 提供 MIT、位置-速度、速度和力位混控接口，实际可用模式取决于电机固件；已通过构建和主机协议回归测试，尚未完成实机验证。详见 [使用说明](User_File/Device/Peripheral/Motor/DMmotor/dmmotor.md) |
 
 最近一次历史构建结果（2026-06-01；2026-10-11 的无线接收与工具链路径修改未构建）：
@@ -107,11 +107,12 @@ cmake --build --preset Debug
 
 ### 无线接收帧
 
-- USART1 配置保持现有 115200 baud、8N1；接收端按 `FF 01 10 ... FE` 解析固定 16 字节帧，支持分段和连续帧输入。
+- USART10 配置保持现有 115200 baud、8N1；接收端按 `FF 01 10 ... FE` 解析固定 16 字节帧，支持分段和连续帧输入。
 - 解析出来源、序号、模式、x/y 平移原始值、高度目标/速度、角度目标和 z 角速度原始值；多字节目标值按大端读取。
 - `mode=3` 为小陀螺模式：x/y 按世界系平移速度解释，z 为自转角速度；控制任务每 10 ms 根据 INS 当前航向把 x/y 旋转到车体系后下发，`mode=0/1/2` 和未知模式均停止，接收超时 100 ms 或 INS 航向无效时也停止。
 - 原始 int8 到 m/s、rad/s 的比例在 `User_File/Task/Control_Task.cpp` 的 `REMOTE_X_MPS_PER_COUNT`、`REMOTE_Y_MPS_PER_COUNT` 与 `REMOTE_Z_RAD_S_PER_COUNT` 配置；当前默认 0，按手柄实际映射手动填写后才会产生非零速度。
 - 当前仓库不包含手柄发送端程序；手柄上的模式选择需由发送端写入帧的 mode 字节。
+- UART7 VOFA+ 仅保留 16 个无线控制诊断通道：0 接收字节数、1 合法帧数、2 非法帧数、3 mode、4~6 x/y/z 原始值、7 帧龄 ms、8 控制激活、9 INS 有效、10 电机在线位掩码、11 CAN2 BUS-OFF、12~15 四轮转速。
 
 ### 烧录与调试入口
 

@@ -12,6 +12,11 @@
 #include <cmath>
 #include <cstdint>
 
+extern "C" {
+extern volatile uint8_t wireless_control_active;
+extern volatile uint8_t wireless_ins_valid;
+}
+
 namespace
 {
 constexpr uint16_t ZDT_ACCELERATION = 100U;
@@ -20,13 +25,15 @@ constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 1000U;
 constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 1000U;
 constexpr uint32_t REMOTE_FRAME_TIMEOUT_TICKS = 100U;
 constexpr uint32_t REMOTE_CONTROL_PERIOD_TICKS = 10U;
+// Debug fallback: allow mode=3 control before the INS pose becomes valid.
+constexpr bool REMOTE_REQUIRE_VALID_INS = false;
 constexpr float CHASSIS_WHEEL_RADIUS_M = 0.0375f;
 constexpr float CHASSIS_GEAR_RATIO = 1.0f;
 // 协议只提供有符号 int8 原始量；按实际手柄标定填写每计数对应的物理速度。
 // 比例未配置前保持 0，避免把原始字节误当成 m/s 或 rad/s 直接驱动车轮。
-constexpr float REMOTE_X_MPS_PER_COUNT = 0.0f;
-constexpr float REMOTE_Y_MPS_PER_COUNT = 0.0f;
-constexpr float REMOTE_Z_RAD_S_PER_COUNT = 0.0f;
+constexpr float REMOTE_X_MPS_PER_COUNT = 0.005f;
+constexpr float REMOTE_Y_MPS_PER_COUNT = 0.005f;
+constexpr float REMOTE_Z_RAD_S_PER_COUNT = 0.01f;
 
 void InitChassis(void)
 {
@@ -75,10 +82,14 @@ void StopChassis(bool &chassis_stopped)
 bool ApplySmallGyroFrame(const Struct_Remote_Control_Frame &frame)
 {
     const Struct_INS_Pose world_pose = APP_INS.GetComplementaryPosition();
-    if (!world_pose.valid || !std::isfinite(world_pose.yaw_rad))
+    const bool ins_valid =
+        world_pose.valid && std::isfinite(world_pose.yaw_rad);
+    wireless_ins_valid = ins_valid ? 1U : 0U;
+    if (REMOTE_REQUIRE_VALID_INS && !ins_valid)
     {
         return false;
     }
+    const float yaw_rad = ins_valid ? world_pose.yaw_rad : 0.0f;
 
     const float world_vx =
         static_cast<float>(frame.x_velocity_raw) * REMOTE_X_MPS_PER_COUNT;
@@ -88,14 +99,19 @@ bool ApplySmallGyroFrame(const Struct_Remote_Control_Frame &frame)
                         REMOTE_Z_RAD_S_PER_COUNT;
 
     // 与 Class_Chassis::RunToPosition() 使用相同的世界系到车体系变换。
-    const float cos_yaw = std::cos(world_pose.yaw_rad);
-    const float sin_yaw = std::sin(world_pose.yaw_rad);
+    const float cos_yaw = std::cos(yaw_rad);
+    const float sin_yaw = std::sin(yaw_rad);
     const float body_vx = cos_yaw * world_vx + sin_yaw * world_vy;
     const float body_vy = -sin_yaw * world_vx + cos_yaw * world_vy;
     APP_Chassis.SetVelocity(body_vx, body_vy, omega);
     return true;
 }
 } // namespace
+
+extern "C" {
+volatile uint8_t wireless_control_active = 0U;
+volatile uint8_t wireless_ins_valid = 0U;
+}
 
 extern "C" void Control_Task(void *argument)
 {
@@ -155,6 +171,8 @@ extern "C" void Control_Task(void *argument)
                 StopChassis(chassis_stopped);
             }
         }
+
+        wireless_control_active = small_gyro_active ? 1U : 0U;
 
         osDelay(1U);
     }
