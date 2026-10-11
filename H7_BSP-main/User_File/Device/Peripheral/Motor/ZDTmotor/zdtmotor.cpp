@@ -798,6 +798,7 @@ void Class_ZDTMotor::ParseFeedback(const uint8_t *data, uint8_t length)
                 position = -position;
             }
             feedback.position_deg = ApplyDirection(position);
+            feedback.position_rx_timestamp_us = feedback.last_rx_timestamp_us;
         }
         break;
 

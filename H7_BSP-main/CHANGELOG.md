@@ -4,6 +4,21 @@
 
 格式遵循“日期 + 分类”的方式维护。当前项目尚未形成正式版本号，因此先使用日期条目。
 
+## 2026-10-11 17:34 Asia/Shanghai
+
+### 已调整
+
+- `User_File/Application/Chassis/Chassis.cpp` 的 `ConfigurePeriodicFeedback()` 不再下发 0x35 实时转速定时返回，只保留 0x36 实时位置。
+- `User_File/Application/Chassis/Chassis.h/.cpp` 新增 `ResolveWheelSpeedRpm()` 并按轮取转速：优先 0x35 实时转速；拿不到（`speed_rx_timestamp_us` 为 0 或超过 30 ms）时改用 0x36 位置的两拍差分（dt 取两拍位置时间戳之差，跨圈绕回短弧），同一拍位置未更新时沿用上一拍转速。
+- `User_File/Device/Peripheral/Motor/ZDTmotor/zdtmotor.h/.cpp` 为 0x36 位置反馈增加独立时间戳 `position_rx_timestamp_us`。
+- `README.md` 更新 mode 3 闭环的转速反馈来源说明。
+
+### 影响与验证
+
+- 现象定位：`ConfigurePeriodicFeedback()` 同时下发 `11 18 35` / `11 18 36`，而手册 5.5.1 的定时返回命令一次只带一个信息功能码，两者互相顶掉后 `feedback.speed_rx_timestamp_us` 恒为 0，`GetBodyVelocity()` 每拍返回 false，`ApplySmallGyroFrame()` 失败即 `StopChassis()`——表现就是小陀螺模式下 `wireless_control_active` 在 0/1 抖动且小车不动。
+- 差分转速的低速分辨率受 0x36 周期（10 ms）限制，噪声也大于电机内部转速报告；若后续确认电机固件可同时定时返回 0x35，恢复该配置即可，代码会自动优先使用 0x35。
+- 已执行 `git diff --check`（通过）与 `cmake --build build/Debug`（STM32CubeCLT 1.22.0，编译链接通过：FLASH 12.46%、DTCMRAM 80.87%）。未烧录、未实机验证。
+
 ## 2026-10-11 16:59 Asia/Shanghai
 
 ### 已调整

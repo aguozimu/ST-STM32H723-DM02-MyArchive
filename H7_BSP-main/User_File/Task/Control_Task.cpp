@@ -19,11 +19,11 @@ extern volatile uint8_t wireless_ins_valid;
 
 namespace
 {
-constexpr uint16_t ZDT_ACCELERATION = 100U;
+constexpr uint16_t ZDT_ACCELERATION = 250U;
 constexpr uint32_t ZDT_PULSES_PER_REVOLUTION = 3200U;
 constexpr uint32_t ZDT_BOOT_DELAY_TICKS = 1000U;
 constexpr uint32_t ZDT_ENABLE_SETTLE_TICKS = 1000U;
-constexpr uint32_t REMOTE_FRAME_TIMEOUT_TICKS = 100U;
+constexpr uint32_t REMOTE_FRAME_TIMEOUT_TICKS = 300U;
 constexpr uint32_t REMOTE_CONTROL_PERIOD_TICKS = 10U;
 constexpr bool REMOTE_REQUIRE_VALID_INS = true;
 constexpr uint64_t CHASSIS_SPEED_FEEDBACK_MAX_AGE_US = 30000U;
@@ -44,9 +44,9 @@ constexpr float OMEGA_PI_INTEGRAL_LIMIT_RAD_S = 0.5f;
 constexpr float CONTROL_DT_MAX_S = 0.05f;
 constexpr float CONTROL_PI_F = 3.14159265358979f;
 // 协议只提供有符号 int8 原始量；按实际手柄标定填写每计数对应的物理速度。
-constexpr float REMOTE_X_MPS_PER_COUNT = 0.005f;
-constexpr float REMOTE_Y_MPS_PER_COUNT = 0.005f;
-constexpr float REMOTE_Z_RAD_S_PER_COUNT = 0.01f;
+constexpr float REMOTE_X_MPS_PER_COUNT = 0.01f;
+constexpr float REMOTE_Y_MPS_PER_COUNT = 0.01f;
+constexpr float REMOTE_Z_RAD_S_PER_COUNT = 0.05f;
 
 struct SmallGyroControllerState
 {

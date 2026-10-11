@@ -120,7 +120,9 @@ void Class_Chassis::ConfigurePeriodicFeedback(uint16_t period_ms)
 {
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
-        motors[i].ConfigureSpeedFeedbackPeriod(period_ms);
+        /* 手册 5.5.1 的定时返回一次只带一个信息功能码：这里只配 0x36 位置。
+           若再配 0x35，两条命令会互相顶掉，GetBodyVelocity() 就永远拿不到转速。
+           转速改由位置差分推算，见 ResolveWheelSpeedRpm()。 */
         motors[i].ConfigurePositionFeedbackPeriod(period_ms);
     }
 }
@@ -134,6 +136,82 @@ Struct_ZDTMotor_Feedback Class_Chassis::GetMotorFeedback(uint8_t motor_index) co
     }
 
     return motors[motor_index].GetFeedback();
+}
+
+/**
+ * @brief 取单轮转速：优先用 0x35 实时转速，缺失时用 0x36 位置差分估算。
+ * @note 差分用同一路位置反馈的两拍之差，dt 取两拍时间戳之差，因此与调用周期解耦；
+ *       调用周期（10 ms）与位置返回周期相同时，偶发两拍位置相同，此时沿用上一拍转速。
+ */
+bool Class_Chassis::ResolveWheelSpeedRpm(uint8_t wheel_index,
+                                         const Struct_ZDTMotor_Feedback &feedback,
+                                         uint64_t now_us,
+                                         uint64_t max_age_us,
+                                         float &speed_rpm) const
+{
+    const uint64_t speed_timestamp_us = feedback.speed_rx_timestamp_us;
+    if (speed_timestamp_us != 0U && speed_timestamp_us <= now_us &&
+        (now_us - speed_timestamp_us) <= max_age_us)
+    {
+        speed_rpm = feedback.speed_rpm;
+        return std::isfinite(speed_rpm);
+    }
+
+    WheelSpeedHistory &history = wheel_speed_history[wheel_index];
+    WheelSpeedSample &sample = wheel_speed_sample[wheel_index];
+    const uint64_t position_timestamp_us = feedback.position_rx_timestamp_us;
+    const bool position_fresh = (position_timestamp_us != 0U) &&
+                                (position_timestamp_us <= now_us) &&
+                                ((now_us - position_timestamp_us) <= max_age_us);
+
+    if (position_fresh && history.valid &&
+        (position_timestamp_us > history.timestamp_us))
+    {
+        const float dt_s = static_cast<float>(position_timestamp_us -
+                                              history.timestamp_us) / 1000000.0f;
+        /* 位置跨圈时差分绕回短弧，避免 ±180 度跳变被当成速度尖峰。 */
+        float delta_deg = feedback.position_deg - history.position_deg;
+        delta_deg = std::fmod(delta_deg + 180.0f, 360.0f);
+        if (delta_deg < 0.0f)
+        {
+            delta_deg += 360.0f;
+        }
+        delta_deg -= 180.0f;
+
+        if (dt_s > 0.0f && std::isfinite(delta_deg))
+        {
+            speed_rpm = delta_deg * (60.0f / 360.0f) / dt_s;
+            history.position_deg = feedback.position_deg;
+            history.timestamp_us = position_timestamp_us;
+            if (std::isfinite(speed_rpm))
+            {
+                sample.speed_rpm = speed_rpm;
+                sample.timestamp_us = position_timestamp_us;
+                sample.valid = true;
+                return true;
+            }
+        }
+    }
+
+    if (position_fresh)
+    {
+        /* 位置没更新（同一拍被查两次）或本拍差分无效：刷新历史，沿用上一个样本。 */
+        history.position_deg = feedback.position_deg;
+        history.timestamp_us = position_timestamp_us;
+        history.valid = true;
+    }
+    else
+    {
+        history.valid = false;
+    }
+
+    if (sample.valid && (now_us - sample.timestamp_us) <= max_age_us)
+    {
+        speed_rpm = sample.speed_rpm;
+        return true;
+    }
+
+    return false;
 }
 
 bool Class_Chassis::GetBodyVelocity(Struct_Chassis_Velocity &velocity,
@@ -150,20 +228,21 @@ bool Class_Chassis::GetBodyVelocity(Struct_Chassis_Velocity &velocity,
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
         const Struct_ZDTMotor_Feedback feedback = motors[i].GetFeedback();
-        const uint64_t speed_timestamp_us = feedback.speed_rx_timestamp_us;
-        if (!feedback.online || speed_timestamp_us == 0U ||
-            speed_timestamp_us > now_us ||
-            (now_us - speed_timestamp_us) > max_age_us ||
-            !std::isfinite(feedback.speed_rpm) ||
+        if (!feedback.online || !std::isfinite(feedback.position_deg) ||
             !std::isfinite(motor_config[i].speed_to_motor) ||
             !(motor_config[i].speed_to_motor > 0.0f))
         {
             return false;
         }
 
+        float wheel_speed_rpm = 0.0f;
+        if (!ResolveWheelSpeedRpm(i, feedback, now_us, max_age_us, wheel_speed_rpm))
+        {
+            return false;
+        }
+
         // speed_to_motor 的单位是 RPM/(m/s)，反馈方向已由 ZDT reverse 统一。
-        wheel_speed_mps[i] =
-            feedback.speed_rpm / motor_config[i].speed_to_motor;
+        wheel_speed_mps[i] = wheel_speed_rpm / motor_config[i].speed_to_motor;
     }
 
     const float rotation_radius_m = config.half_length + config.half_width;

@@ -149,17 +149,27 @@ public:
     /** 周期调用四台 ZDT 电机的 Process()，维护底层应答和在线状态。 */
     void Process();
 
-    /** 为四台电机配置速度与位置周期返回；period_ms 为 0 时停止返回。 */
+    /**
+     * @brief 为四台电机配置定时返回；period_ms 为 0 时停止返回。
+     *
+     * 电机手册 5.5.1 的定时返回命令一次只带一个信息功能码，因此这里只配置 0x36
+     * 实时位置（INS 里程计要用，轮速差分也依赖它）。0x35 实时转速不再单独配置，
+     * 改由 GetBodyVelocity() 用位置差分推算，避免两个功能码互相顶掉。
+     */
     void ConfigurePeriodicFeedback(uint16_t period_ms = CHASSIS_MOTOR_FEEDBACK_PERIOD_MS);
 
     /** 按车轮顺序读取一台电机的反馈快照；索引越界或尚未初始化时返回默认值。 */
     Struct_ZDTMotor_Feedback GetMotorFeedback(uint8_t motor_index) const;
 
     /**
-     * @brief 检查四轮速度反馈新鲜度并反算车体系 vx/vy/角速度。
+     * @brief 反算车体系 vx/vy/角速度。
      * @param velocity 成功时写入反算结果；失败时写零。
-     * @param max_age_us 单个速度反馈允许的最大年龄，单位 us。
-     * @return 四个轮速都有效且未超时返回 true。
+     * @param max_age_us 单轮转速允许的最大年龄，单位 us。
+     * @return 四个轮速都新鲜时返回 true。
+     *
+     * 每轮转速优先取 0x35 实时转速；若该功能码没有定时返回（speed_rx_timestamp_us
+     * 一直为 0），则用 0x36 实时位置的两拍差分估算，位置与时间戳取自同一条反馈，
+     * 因此不会把位置当成速度。任一轮两路都拿不到新鲜数据就返回 false，由调用方停车。
      */
     bool GetBodyVelocity(Struct_Chassis_Velocity &velocity,
                          uint64_t max_age_us = 30000U) const;
@@ -191,6 +201,37 @@ private:
     Class_PID position_pid_yaw{}; //!< 航向位置环，内部误差为短弧误差。
     float yaw_pid_last_raw = 0.0f;  //!< 上一拍原始 yaw，用于解缠差分。
     float yaw_pid_unwrapped = 0.0f; //!< 连续 yaw，仅喂给 PID 的微分项。
+
+    /** 单轮转速差分的上一拍位置样本。 */
+    struct WheelSpeedHistory
+    {
+        float position_deg = 0.0f;   //!< 上一拍位置，单位 度。
+        uint64_t timestamp_us = 0U;  //!< 上一拍位置反馈时间戳，us。
+        bool valid = false;          //!< 是否已有可用的上一拍样本。
+    };
+
+    /** 单轮最近一次算出的转速样本，位置这一拍没更新时沿用。 */
+    struct WheelSpeedSample
+    {
+        float speed_rpm = 0.0f;      //!< 最近一次算出的轮速，单位 RPM。
+        uint64_t timestamp_us = 0U;  //!< 该样本对应的反馈时间戳，us。
+        bool valid = false;
+    };
+
+    /**
+     * @brief 取单轮转速：优先 0x35 实时转速，缺失时用 0x36 位置差分。
+     * @return 拿到新鲜转速返回 true；拿不到时由调用方停止底盘。
+     *
+     * 在本 const 查询里缓存上一拍位置/时间戳与最近转速样本，所以状态声明为 mutable。
+     */
+    bool ResolveWheelSpeedRpm(uint8_t wheel_index,
+                              const Struct_ZDTMotor_Feedback &feedback,
+                              uint64_t now_us,
+                              uint64_t max_age_us,
+                              float &speed_rpm) const;
+
+    mutable WheelSpeedHistory wheel_speed_history[CHASSIS_WHEEL_COUNT]{};
+    mutable WheelSpeedSample wheel_speed_sample[CHASSIS_WHEEL_COUNT]{};
 
     std::atomic<bool> initialized{false}; //!< 四台电机 Init() 完成后才允许任务读取反馈。
 };
