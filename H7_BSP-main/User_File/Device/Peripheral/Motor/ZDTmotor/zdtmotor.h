@@ -103,6 +103,7 @@ struct Struct_ZDTMotor_Feedback
     uint8_t last_function = 0U;       /*!< 最近一帧合法反馈的功能码。 */
     uint8_t last_response = 0U;       /*!< 最近动作应答码：02/12/22/9F/E2/EE，含义见手册 4.1.2。 */
     uint64_t last_rx_timestamp_us = 0U; /*!< 最近合法反馈时间戳，us。 */
+    uint64_t speed_rx_timestamp_us = 0U; /*!< 最近 0x35 实时转速反馈时间戳，us。 */
     uint32_t rx_count = 0U;           /*!< 已通过校验的反馈帧总数。 */
     uint32_t checksum_error_count = 0U; /*!< 因校验错误丢弃的帧总数。 */
 };

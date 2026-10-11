@@ -781,6 +781,7 @@ void Class_ZDTMotor::ParseFeedback(const uint8_t *data, uint8_t length)
                 speed = -speed;
             }
             feedback.speed_rpm = ApplyDirection(speed);
+            feedback.speed_rx_timestamp_us = feedback.last_rx_timestamp_us;
         }
         break;
 

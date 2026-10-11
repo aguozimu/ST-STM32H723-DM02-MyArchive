@@ -4,6 +4,21 @@
 
 格式遵循“日期 + 分类”的方式维护。当前项目尚未形成正式版本号，因此先使用日期条目。
 
+## 2026-10-11 16:59 Asia/Shanghai
+
+### 已调整
+
+- `User_File/Device/Peripheral/Motor/ZDTmotor/zdtmotor.h/.cpp` 为 0x35 转速反馈增加独立时间戳，供速度闭环检查反馈新鲜度。
+- `User_File/Application/Chassis/Chassis.h/.cpp` 启用四台电机的周期转速反馈，并新增从四轮 RPM 反算车体系 `vx/vy/角速度` 的接口；位置反馈仍保留给 INS 里程计。
+- `User_File/Task/Control_Task.cpp` 为 mode 3 增加航向保持和底盘 `vx/vy/角速度` 速度 PI；世界系平移命令增加加速度斜率限制。INS 航向无效或任一轮速反馈超过 30 ms 未更新时停止底盘。
+- `README.md` 同步 mode 3 闭环、反馈来源、限值和未验证的实机轮胎滑移边界。
+- 闭环初始限值为平移 0.75 m/s、角速度 2 rad/s、平移加速度 0.5 m/s²；增益和手柄映射比例仍可在 `Control_Task.cpp` 调整。
+
+### 影响与验证
+
+- 仅 mode 3 使用新闭环；其他模式仍停止底盘。轮速由电机编码器反馈反算，无法直接观测轮胎空转后的真实地面速度。
+- 已执行 `git diff --check`，通过；未编译、未烧录，增益、方向和实机打滑改善效果尚未验证。
+
 ## 2026-10-11 16:10 Asia/Shanghai
 
 ### 已修复

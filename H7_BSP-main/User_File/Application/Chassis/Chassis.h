@@ -47,6 +47,14 @@ struct Struct_Chassis_Config
     float gear_ratio = 1.0f;      //!< 电机转数 / 车轮转数，直驱为 1。
 };
 
+/** @brief 从四轮实时转速反算的车体系底盘速度。 */
+struct Struct_Chassis_Velocity
+{
+    float vx_mps = 0.0f;       //!< 向右为正的横向速度，单位 m/s。
+    float vy_mps = 0.0f;       //!< 向前为正的纵向速度，单位 m/s。
+    float omega_rad_s = 0.0f;  //!< 逆时针为正的角速度，单位 rad/s。
+};
+
 /**
  * @brief 单个车轮对应的 ZDT 电机参数。
  *
@@ -146,6 +154,15 @@ public:
 
     /** 按车轮顺序读取一台电机的反馈快照；索引越界或尚未初始化时返回默认值。 */
     Struct_ZDTMotor_Feedback GetMotorFeedback(uint8_t motor_index) const;
+
+    /**
+     * @brief 检查四轮速度反馈新鲜度并反算车体系 vx/vy/角速度。
+     * @param velocity 成功时写入反算结果；失败时写零。
+     * @param max_age_us 单个速度反馈允许的最大年龄，单位 us。
+     * @return 四个轮速都有效且未超时返回 true。
+     */
+    bool GetBodyVelocity(Struct_Chassis_Velocity &velocity,
+                         uint64_t max_age_us = 30000U) const;
 
     /** 为四台电机缓存停止命令，再发送一次 ZDT 广播同步触发。 */
     void Stop();

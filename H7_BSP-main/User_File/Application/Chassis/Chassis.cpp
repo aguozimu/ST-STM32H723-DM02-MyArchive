@@ -8,6 +8,7 @@
 #include "Chassis.h"
 
 #include "INS.h"
+#include "sys_timestamp.h"
 
 #include <cmath>
 #include "cmsis_os2.h"
@@ -119,7 +120,7 @@ void Class_Chassis::ConfigurePeriodicFeedback(uint16_t period_ms)
 {
     for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
     {
-        //motors[i].ConfigureSpeedFeedbackPeriod(period_ms);
+        motors[i].ConfigureSpeedFeedbackPeriod(period_ms);
         motors[i].ConfigurePositionFeedbackPeriod(period_ms);
     }
 }
@@ -133,6 +134,61 @@ Struct_ZDTMotor_Feedback Class_Chassis::GetMotorFeedback(uint8_t motor_index) co
     }
 
     return motors[motor_index].GetFeedback();
+}
+
+bool Class_Chassis::GetBodyVelocity(Struct_Chassis_Velocity &velocity,
+                                   uint64_t max_age_us) const
+{
+    velocity = {};
+    if (!initialized.load(std::memory_order_acquire))
+    {
+        return false;
+    }
+
+    const uint64_t now_us = SYS_Timestamp.Get_Now_Microsecond();
+    float wheel_speed_mps[CHASSIS_WHEEL_COUNT]{};
+    for (uint8_t i = 0U; i < CHASSIS_WHEEL_COUNT; ++i)
+    {
+        const Struct_ZDTMotor_Feedback feedback = motors[i].GetFeedback();
+        const uint64_t speed_timestamp_us = feedback.speed_rx_timestamp_us;
+        if (!feedback.online || speed_timestamp_us == 0U ||
+            speed_timestamp_us > now_us ||
+            (now_us - speed_timestamp_us) > max_age_us ||
+            !std::isfinite(feedback.speed_rpm) ||
+            !std::isfinite(motor_config[i].speed_to_motor) ||
+            !(motor_config[i].speed_to_motor > 0.0f))
+        {
+            return false;
+        }
+
+        // speed_to_motor 的单位是 RPM/(m/s)，反馈方向已由 ZDT reverse 统一。
+        wheel_speed_mps[i] =
+            feedback.speed_rpm / motor_config[i].speed_to_motor;
+    }
+
+    const float rotation_radius_m = config.half_length + config.half_width;
+    if (!std::isfinite(rotation_radius_m) || !(rotation_radius_m > 0.0f))
+    {
+        return false;
+    }
+
+    // 与 SetVelocity() 的四轮逆运动学严格互逆。
+    velocity.vx_mps = (wheel_speed_mps[0] - wheel_speed_mps[1] -
+                       wheel_speed_mps[2] + wheel_speed_mps[3]) * 0.25f;
+    velocity.vy_mps = (wheel_speed_mps[0] + wheel_speed_mps[1] +
+                       wheel_speed_mps[2] + wheel_speed_mps[3]) * 0.25f;
+    velocity.omega_rad_s = (-wheel_speed_mps[0] + wheel_speed_mps[1] -
+                            wheel_speed_mps[2] + wheel_speed_mps[3]) /
+                           (4.0f * rotation_radius_m);
+
+    if (!std::isfinite(velocity.vx_mps) || !std::isfinite(velocity.vy_mps) ||
+        !std::isfinite(velocity.omega_rad_s))
+    {
+        velocity = {};
+        return false;
+    }
+
+    return true;
 }
 
 void Class_Chassis::Enable()

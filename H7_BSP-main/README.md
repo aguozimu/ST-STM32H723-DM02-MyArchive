@@ -109,8 +109,9 @@ cmake --build --preset Debug
 
 - USART10 配置保持现有 115200 baud、8N1；接收端按 `FF 01 10 ... FE` 解析固定 16 字节帧，支持分段和连续帧输入。
 - 解析出来源、序号、模式、x/y 平移原始值、高度目标/速度、角度目标和 z 角速度原始值；多字节目标值按大端读取。
-- `mode=3` 为小陀螺模式：x/y 按世界系平移速度解释，z 为自转角速度；控制任务每 10 ms 根据 INS 当前航向把 x/y 旋转到车体系后下发，`mode=0/1/2` 和未知模式均停止，接收超时 100 ms 或 INS 航向无效时也停止。
-- 原始 int8 到 m/s、rad/s 的比例在 `User_File/Task/Control_Task.cpp` 的 `REMOTE_X_MPS_PER_COUNT`、`REMOTE_Y_MPS_PER_COUNT` 与 `REMOTE_Z_RAD_S_PER_COUNT` 配置；当前默认 0，按手柄实际映射手动填写后才会产生非零速度。
+- `mode=3` 为小陀螺模式：x/y 是世界系平移速度目标，z 是自转角速度前馈。控制任务每 10 ms 运行航向保持和底盘 `vx/vy/角速度` 速度 PI；`mode=0/1/2` 和未知模式均停止，接收超时 100 ms、INS 航向无效或轮速反馈超过 30 ms 未更新时也停止。
+- 平移速度反馈由四台 ZDT 电机的 0x35 RPM 报告反算；0x36 位置报告仍供 INS 里程计使用。此反馈能纠正轮速误差，不能直接测出轮胎空转后的真实地面速度。
+- 原始 int8 到 m/s、rad/s 的比例在 `User_File/Task/Control_Task.cpp` 的 `REMOTE_X_MPS_PER_COUNT`、`REMOTE_Y_MPS_PER_COUNT` 与 `REMOTE_Z_RAD_S_PER_COUNT` 配置，当前分别为 0.005、0.005、0.01；平移/角速度上限和加速度斜率也在同文件配置，闭环增益为实机初始值。
 - 当前仓库不包含手柄发送端程序；手柄上的模式选择需由发送端写入帧的 mode 字节。
 - UART7 VOFA+ 仅保留 16 个无线控制诊断通道：0 接收字节数、1 合法帧数、2 非法帧数、3 mode、4~6 x/y/z 原始值、7 帧龄 ms、8 控制激活、9 INS 有效、10 电机在线位掩码、11 CAN2 BUS-OFF、12~15 四轮转速。
 
