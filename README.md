@@ -33,6 +33,11 @@ STM32H7 的 D-Cache、DMA 与多路外设很容易在真实工程里互相踩坑
 - **位置闭环**：三轴 PD（微分先行、输出限幅、航向解缠），支持绝对航点与相对航点
 - **可观测调试**：SystemView RTT、UART7 justfloat 遥测、DAPLink 烧录与调试任务
 
+## 演示与 3D 模型
+
+- **演示视频**：[场地实跑（YouTube）](https://youtu.be/SikXQFD-G4A)
+- **3D 模型**：[SW Engineering Competition Car（Gitee 开源）](https://gitee.com/aguozimu/sw-engineering-competition-car.git)
+
 ## 工作方式
 
 ```text
